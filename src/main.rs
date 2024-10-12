@@ -13,6 +13,7 @@ mod utils;
 use bytes::BytesMut;
 use log::{error, info, trace};
 use parser::cli::Args;
+use redis_starter_rust::utils::messages::{RedisMessageType, RespEncoder};
 use utils::{logger::set_log_level, thread_pool::ThreadPool};
 
 fn main() {
@@ -84,6 +85,8 @@ fn recieve_message(mut stream: TcpStream) {
 
         // let command = RedisMessage::parse(raw_message);
 
-        stream.write_all("+PONG\r\n".as_bytes());
+        let message = RedisMessageType::SimpleString("Pong".into());
+
+        stream.write_all(message.encode().as_slice());
     }
 }
