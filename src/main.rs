@@ -1,89 +1,139 @@
-#![allow(warnings)]
+// #![allow(warnings)]
 
-use std::{
-    error::Error,
-    io::{self, BufRead, BufReader, ErrorKind, Read, Write},
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream},
-    result::Result,
-};
+// use std::{
+//     error::Error,
+//     io::{self, BufRead, BufReader, ErrorKind, Read, Write},
+//     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream},
+//     result::Result,
+// };
 
-mod parser;
-mod utils;
+// mod parser;
+// mod utils;
 
-use bytes::BytesMut;
-use log::{error, info, trace};
-use parser::cli::Args;
-use utils::{logger::set_log_level, thread_pool::ThreadPool};
+// use bytes::BytesMut;
+// use log::{error, info, trace};
+// use parser::cli::Args;
+// use utils::{logger::set_log_level, thread_pool::ThreadPool};
+
+// fn main() {
+//     let args: Args = Args::parse();
+
+//     let server_address = SocketAddr::new(args.host, args.port);
+//     let pool = ThreadPool::new(args.threads.into());
+
+//     info!("Starting server");
+//     let mut listener = match TcpListener::bind(server_address) {
+//         Ok(server) => server,
+//         Err(err) => panic!("Unable to bin TcpListener to arress: {}", server_address),
+//     };
+
+//     set_log_level(&args);
+
+//     for stream in listener.incoming() {
+//         match stream {
+//             Ok(stream) => pool.execute(|| recieve_message(stream)),
+//             Err(err) => {
+//                 error!("Error while recieving tcp message: {}", err)
+//             }
+//         }
+//     }
+// }
+
+// /// Reads the data provided in a single TCP message.
+// fn process_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
+//     let mut data = Vec::new();
+//     let mut temp_buffer: [u8; 1024] = [0; 1024];
+
+//     loop {
+//         let bytes_read = match stream.read(&mut temp_buffer) {
+//             Ok(val) => val,
+//             Err(err) => break,
+//         };
+
+//         let vals = &temp_buffer.as_slice()[..bytes_read];
+//         data.extend_from_slice(vals);
+
+//         if bytes_read < 1024 {
+//             break;
+//         }
+//     }
+
+//     let string_data = String::from_utf8(data.clone()).unwrap();
+
+//     stream.write_all(format!("Recieved request {:?}", string_data).as_bytes())?;
+
+//     return Ok(data);
+// }
+
+// fn recieve_message(mut stream: TcpStream) {
+//     let peer = stream.peer_addr().unwrap();
+//     'connection: loop {
+//         let raw_message = match process_message(&mut stream) {
+//             Ok(raw_message) => {
+//                 trace!("Successfully read tcp message.");
+//                 raw_message
+//             }
+//             Err(err) => {
+//                 match err.kind() {
+//                     ErrorKind::BrokenPipe => info!("Pipe to client {} broke", peer),
+//                     _ => error!("Encounterd IO exception while connected to {}", err),
+//                 }
+//                 break 'connection;
+//             }
+//         };
+
+//         // let command = RedisMessage::parse(raw_message);
+
+//         // stream.write_all(format!("{:#?}", command.command).as_bytes());
+//     }
+// }
+
+use std::net::TcpListener;
 
 fn main() {
-    let args: Args = Args::parse();
+    // You can use print statements as follows for debugging, they'll be visible when running tests.
 
-    let server_address = SocketAddr::new(args.host, args.port);
-    let pool = ThreadPool::new(args.threads.into());
+    println!("Logs from your program will appear here!");
 
-    info!("Starting server");
-    let mut listener = match TcpListener::bind(server_address) {
-        Ok(server) => server,
-        Err(err) => panic!("Unable to bin TcpListener to arress: {}", server_address),
-    };
+    let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
 
-    set_log_level(&args);
+    // Uncomment this block to pass the first stage
+
+    //
+
+    // let listener = TcpListener::bind("127.0.0.1:6379").unwrap();
+
+    //
+
+    // for stream in listener.incoming() {
+
+    //     match stream {
+
+    //         Ok(_stream) => {
+
+    //             println!("accepted new connection");
+
+    //         }
+
+    //         Err(e) => {
+
+    //             println!("error: {}", e);
+
+    //         }
+
+    //     }
+
+    // }
 
     for stream in listener.incoming() {
         match stream {
-            Ok(stream) => pool.execute(|| recieve_message(stream)),
-            Err(err) => {
-                error!("Error while recieving tcp message: {}", err)
+            Ok(_stream) => {
+                println!("accepted new connection");
+            }
+
+            Err(e) => {
+                println!("error: {}", e);
             }
         }
-    }
-}
-
-/// Reads the data provided in a single TCP message.
-fn process_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
-    let mut data = Vec::new();
-    let mut temp_buffer: [u8; 1024] = [0; 1024];
-
-    loop {
-        let bytes_read = match stream.read(&mut temp_buffer) {
-            Ok(val) => val,
-            Err(err) => break,
-        };
-
-        let vals = &temp_buffer.as_slice()[..bytes_read];
-        data.extend_from_slice(vals);
-
-        if bytes_read < 1024 {
-            break;
-        }
-    }
-
-    let string_data = String::from_utf8(data.clone()).unwrap();
-
-    stream.write_all(format!("Recieved request {:?}", string_data).as_bytes())?;
-
-    return Ok(data);
-}
-
-fn recieve_message(mut stream: TcpStream) {
-    let peer = stream.peer_addr().unwrap();
-    'connection: loop {
-        let raw_message = match process_message(&mut stream) {
-            Ok(raw_message) => {
-                trace!("Successfully read tcp message.");
-                raw_message
-            }
-            Err(err) => {
-                match err.kind() {
-                    ErrorKind::BrokenPipe => info!("Pipe to client {} broke", peer),
-                    _ => error!("Encounterd IO exception while connected to {}", err),
-                }
-                break 'connection;
-            }
-        };
-
-        // let command = RedisMessage::parse(raw_message);
-
-        // stream.write_all(format!("{:#?}", command.command).as_bytes());
     }
 }
