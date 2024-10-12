@@ -85,7 +85,7 @@ fn recieve_message(mut stream: TcpStream) {
 
         // let command = RedisMessage::parse(raw_message);
 
-        let message = RedisMessageType::SimpleString("Pong".into());
+        let message = RedisMessageType::SimpleString("PONG".into());
 
         stream.write_all(message.encode().as_slice());
     }
