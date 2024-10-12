@@ -13,7 +13,7 @@ mod utils;
 use bytes::BytesMut;
 use log::{error, info, trace};
 use parser::cli::Args;
-use utils::{logger::set_log_level, thread_pool::ThreadPool};
+use utils::thread_pool::ThreadPool;
 
 fn main() {
     let args: Args = Args::parse();
@@ -37,6 +37,22 @@ fn main() {
             }
         }
     }
+}
+
+pub fn set_log_level(args: &Args) {
+    env_logger::Builder::new()
+        .filter_level(args.log_level)
+        .format(|buf, record| {
+            writeln!(
+                buf,
+                "{} [{}] {}: {}",
+                chrono::Local::now().format("%Y-%m-%dT%H:%M:%S"),
+                record.level(),
+                record.file().unwrap_or("unknown"),
+                record.args()
+            )
+        })
+        .init();
 }
 
 /// Reads the data provided in a single TCP message.
