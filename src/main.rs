@@ -7,12 +7,13 @@ use std::{
     result::Result,
 };
 
+mod parser;
+mod utils;
+
 use bytes::BytesMut;
 use log::{error, info, trace};
-use redis_starter_rust::{
-    parser::cli::Args,
-    utils::{logger::set_log_level, thread_pool::ThreadPool},
-};
+use parser::cli::Args;
+use utils::{logger::set_log_level, thread_pool::ThreadPool};
 
 fn main() {
     let args: Args = Args::parse();
