@@ -51,7 +51,7 @@ fn process_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
 
         let bytes_read = stream.read(&mut buffer)?;
 
-        if bytes_read == 0 {
+        if bytes_read == 0 && buffer.len() != 0 {
             break;
         }
     }
