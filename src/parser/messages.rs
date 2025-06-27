@@ -1,20 +1,30 @@
+use std::fmt::Display;
+
 use anyhow::{anyhow, Result};
-use strum_macros::Display;
 
 use crate::consts::CRLF;
 
 pub type RedisDecodeResult = Result<(RedisMessageType, usize)>;
 
-#[derive(Debug, PartialEq, Eq, Display)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum RedisMessageType {
-    #[strum(to_string = "SimpleString")]
     SimpleString(String),
-    #[strum(to_string = "BulkString")]
     BulkString(String),
-    #[strum(to_string = "Integer")]
     Integer(i64),
-    #[strum(to_string = "Array")]
     Array(Vec<RedisMessageType>),
+}
+
+impl Display for RedisMessageType {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let name = match self {
+            Self::SimpleString(_) => "SimpleString",
+            Self::Array(_) => "Array",
+            Self::BulkString(_) => "BulkString",
+            Self::Integer(_) => "Integer"
+        };
+
+        return write!(f, "{}", name);
+    }
 }
 
 // pub trait RespEncoder {

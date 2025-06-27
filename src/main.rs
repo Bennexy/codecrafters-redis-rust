@@ -98,7 +98,7 @@ fn process_command_array(array: Vec<RedisMessageType>) -> RedisMessageType {
     let command = array.get(0).expect("Redis expects at least a single command!");
 
     let command = match command {
-        RedisMessageType::SimpleString(val) | &RedisMessageType::BulkString(val) => val,
+        RedisMessageType::SimpleString(ref val) | &RedisMessageType::BulkString(ref val) => val,
         other => panic!("Redis requires the first argument to be a string. Recieved a {}", other.to_string())
     }.to_uppercase();
 
