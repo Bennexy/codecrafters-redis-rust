@@ -1,5 +1,6 @@
-use crate::parser::cli::Args;
 use std::io::Write;
+
+use crate::utils::cli::Args;
 
 pub fn set_log_level(args: &Args) {
     env_logger::Builder::new()

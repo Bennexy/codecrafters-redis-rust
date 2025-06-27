@@ -1,5 +1,6 @@
 #![allow(warnings)]
 
+use core::str;
 use std::{
     error::Error,
     io::{self, BufRead, BufReader, ErrorKind, Read, Write},
@@ -7,14 +8,15 @@ use std::{
     result::Result,
 };
 
-mod parser;
-mod utils;
+pub mod consts;
+pub mod parser;
+pub mod utils;
 
+use crate::parser::messages::RedisMessageType;
+use anyhow::anyhow;
 use bytes::BytesMut;
 use log::{error, info, trace};
-use parser::cli::Args;
-use redis_starter_rust::utils::messages::{RedisMessageType, RespEncoder};
-use utils::{logger::set_log_level, thread_pool::ThreadPool};
+use utils::{cli::Args, logger::set_log_level, thread_pool::ThreadPool};
 
 fn main() {
     let args: Args = Args::parse();
@@ -25,7 +27,7 @@ fn main() {
     info!("Starting server");
     let mut listener = match TcpListener::bind(server_address) {
         Ok(server) => server,
-        Err(err) => panic!("Unable to bin TcpListener to arress: {}", server_address),
+        Err(err) => panic!("Unable to bind TcpListener to address: {}", server_address),
     };
 
     set_log_level(&args);
@@ -42,28 +44,19 @@ fn main() {
 
 /// Reads the data provided in a single TCP message.
 fn process_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
-    let mut data = Vec::new();
-    let mut temp_buffer: [u8; 1024] = [0; 1024];
+    let mut buffer = BytesMut::with_capacity(4096);
 
     loop {
-        let bytes_read = match stream.read(&mut temp_buffer) {
-            Ok(val) => val,
-            Err(err) => break,
-        };
+        buffer.reserve(1024);
 
-        let vals = &temp_buffer.as_slice()[..bytes_read];
-        data.extend_from_slice(vals);
+        let bytes_read = stream.read(&mut buffer)?;
 
-        if bytes_read < 1024 {
+        if bytes_read == 0 {
             break;
         }
     }
 
-    let string_data = String::from_utf8(data.clone()).unwrap();
-
-    // stream.write_all(format!("Recieved request {:?}", string_data).as_bytes())?;
-
-    return Ok(data);
+    return Ok(buffer.to_vec());
 }
 
 fn recieve_message(mut stream: TcpStream) {
@@ -71,7 +64,7 @@ fn recieve_message(mut stream: TcpStream) {
     'connection: loop {
         let raw_message = match process_message(&mut stream) {
             Ok(raw_message) => {
-                trace!("Successfully read tcp message.");
+                trace!("Successfully read tcp message. {:#?}", raw_message);
                 raw_message
             }
             Err(err) => {
@@ -83,10 +76,47 @@ fn recieve_message(mut stream: TcpStream) {
             }
         };
 
-        // test let command = RedisMessage::parse(raw_message);
+        let message_input =
+            str::from_utf8(&raw_message).expect("Unable to parse input bytestream to str utf8");
+        let command = RedisMessageType::decode(message_input)
+            .expect("unable to parse RedisMessageType from input byte stream")
+            .0;
 
-        let message = RedisMessageType::SimpleString("PONG".into());
+        let response = match command {
+            RedisMessageType::Array(val) => process_command_array(val),
+            other => panic!("Expected an RedisMessageType::Array as a command input, but got: {}", other.to_string())
+        };
 
-        stream.write_all(message.encode().as_slice());
+
+        stream.write_all(response.encode().as_bytes());
     }
+}
+
+
+fn process_command_array(array: Vec<RedisMessageType>) -> RedisMessageType {
+
+    let command = array.get(0).expect("Redis expects at least a single command!");
+
+    let command = match command {
+        RedisMessageType::SimpleString(val) | &RedisMessageType::BulkString(val) => val,
+        other => panic!("Redis requires the first argument to be a string. Recieved a {}", other.to_string())
+    }.to_uppercase();
+
+    let response = if command == "ECHO" {
+        let echo_val = array.get(1).expect("Echo expects a second argument to echo!");
+        let value = match echo_val {
+            RedisMessageType::BulkString(val) | RedisMessageType::SimpleString(val) => val.to_string(),
+            RedisMessageType::Integer(val) => val.to_string(),
+            other => panic!("Redis cannot echo value of type: {}", other.to_string())
+        };
+
+        RedisMessageType::BulkString(value)
+
+    } else if command == "PING" {
+        RedisMessageType::SimpleString("PONG".into())
+    } else {
+        panic!("unknown command {}", command)
+    };
+
+    return response;
 }
