@@ -9,6 +9,7 @@ pub type RedisDecodeResult = Result<(RedisMessageType, usize)>;
 #[derive(Debug, PartialEq, Eq)]
 pub enum RedisMessageType {
     SimpleString(String),
+    Error(String),
     BulkString(String),
     Integer(i64),
     Array(Vec<RedisMessageType>),
@@ -18,6 +19,7 @@ impl Display for RedisMessageType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
             Self::SimpleString(_) => "SimpleString",
+            Self::Error(_) => "Error",
             Self::Array(_) => "Array",
             Self::BulkString(_) => "BulkString",
             Self::Integer(_) => "Integer"
@@ -39,6 +41,7 @@ impl RedisMessageType {
     pub fn encode(&self) -> String {
         match self {
             Self::SimpleString(data) => format!("+{}{CRLF}", data),
+            Self::Error(data) => format!("-{}{CRLF}", data),
             Self::BulkString(data) => format!("${}{CRLF}{}{CRLF}", data.len(), data),
             Self::Integer(data) => format!(":{}{CRLF}", data),
             Self::Array(data) => format!("*{}{CRLF}{}", data.len(), encode_array_elements(data)),
@@ -56,6 +59,7 @@ impl RedisMessageType {
 
         match first_char {
             '+' => parse_simple_string(s),
+            '-' => parse_error_string(s),
             '$' => parse_bulk_string(s),
             ':' => parse_integer(s),
             '*' => parse_array(s),
@@ -75,6 +79,15 @@ fn parse_simple_string(s: &str) -> RedisDecodeResult {
     let string = value.to_string();
 
     return Ok((RedisMessageType::SimpleString(string), value.len() + 3));
+}
+
+fn parse_error_string(s: &str) -> RedisDecodeResult {
+    
+    let (value, _) = s[1..].split_once(CRLF).expect("Error string must end on a CRLF");
+
+    let string = value.to_string();
+
+    return Ok((RedisMessageType::Error(string), value.len() + 3));
 }
 
 fn parse_bulk_string(s: &str) -> RedisDecodeResult {

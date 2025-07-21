@@ -14,15 +14,19 @@ struct Worker {
 
 impl Worker {
     fn new(id: usize, receiver: Arc<Mutex<mpsc::Receiver<Job>>>) -> Self {
-        let thread = thread::spawn(move || loop {
-            let job = receiver.lock().unwrap().recv().unwrap();
+        let thread_name = format!("worker-{}", id);
 
-            trace!("Worker {id} got a job; executing.");
+        let thread = thread::Builder::new()
+            .name(thread_name)
+            .spawn(move || loop {
+                let job = receiver.lock().unwrap().recv().unwrap();
 
-            job();
+                trace!("Worker {id} got a job; executing.");
 
-            trace!("Worker {id} completed job; Giving worker back into pool.")
-        });
+                job();
+
+                trace!("Worker {id} completed job; Giving worker back into pool.")
+            }).expect(format!("Failed to spawn thread: worker-{id}").as_str());
 
         Self { id, thread }
     }

@@ -15,7 +15,7 @@ pub mod utils;
 use crate::parser::messages::RedisMessageType;
 use anyhow::anyhow;
 use bytes::BytesMut;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use utils::{cli::Args, logger::set_log_level, thread_pool::ThreadPool};
 
 fn main() {
@@ -44,19 +44,23 @@ fn main() {
 
 /// Reads the data provided in a single TCP message.
 fn process_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
-    let mut buffer = BytesMut::with_capacity(4096);
+    let mut data = BytesMut::with_capacity(4096);
+    let mut temp_buffer: [u8; 1024] = [0; 1024];
 
     loop {
-        buffer.reserve(1024);
+        let bytes_read = stream.read(&mut temp_buffer)?;
+        trace!("Bytes recieved: {bytes_read}");
 
-        let bytes_read = stream.read(&mut buffer)?;
+        let vals = &temp_buffer.as_slice()[..bytes_read];
+        data.extend_from_slice(vals);
 
-        if bytes_read == 0 && buffer.len() != 0 {
+        if bytes_read < 1024 || bytes_read == 0 {
             break;
         }
     }
 
-    return Ok(buffer.to_vec());
+    // data.shrink_to_fit();
+    return Ok(data.to_vec());
 }
 
 fn recieve_message(mut stream: TcpStream) {
@@ -65,6 +69,10 @@ fn recieve_message(mut stream: TcpStream) {
         let raw_message = match process_message(&mut stream) {
             Ok(raw_message) => {
                 trace!("Successfully read tcp message. {:#?}", raw_message);
+                if (raw_message.len() == 0) {
+                    info!("No bytes recieved. Closing connection");
+                    return;
+                }
                 raw_message
             }
             Err(err) => {
@@ -78,6 +86,7 @@ fn recieve_message(mut stream: TcpStream) {
 
         let message_input =
             str::from_utf8(&raw_message).expect("Unable to parse input bytestream to str utf8");
+        trace!("Message recieved: {}", message_input);
         let command = RedisMessageType::decode(message_input)
             .expect("unable to parse RedisMessageType from input byte stream")
             .0;
@@ -115,7 +124,8 @@ fn process_command_array(array: Vec<RedisMessageType>) -> RedisMessageType {
     } else if command == "PING" {
         RedisMessageType::SimpleString("PONG".into())
     } else {
-        panic!("unknown command {}", command)
+        error!("unknown command {}", command);
+        RedisMessageType::Error(format!("unknown command {}", command).into())
     };
 
     return response;
