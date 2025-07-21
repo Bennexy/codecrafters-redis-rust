@@ -11,6 +11,7 @@ pub enum RedisMessageType {
     SimpleString(String),
     Error(String),
     BulkString(String),
+    NullBulkString,
     Integer(i64),
     Array(Vec<RedisMessageType>),
 }
@@ -22,6 +23,7 @@ impl Display for RedisMessageType {
             Self::Error(_) => "Error",
             Self::Array(_) => "Array",
             Self::BulkString(_) => "BulkString",
+            Self::NullBulkString => "NullBulkString",
             Self::Integer(_) => "Integer"
         };
 
@@ -43,6 +45,7 @@ impl RedisMessageType {
             Self::SimpleString(data) => format!("+{}{CRLF}", data),
             Self::Error(data) => format!("-{}{CRLF}", data),
             Self::BulkString(data) => format!("${}{CRLF}{}{CRLF}", data.len(), data),
+            Self::NullBulkString => format!("$-1{CRLF}"),
             Self::Integer(data) => format!(":{}{CRLF}", data),
             Self::Array(data) => format!("*{}{CRLF}{}", data.len(), encode_array_elements(data)),
         }
@@ -64,6 +67,18 @@ impl RedisMessageType {
             ':' => parse_integer(s),
             '*' => parse_array(s),
             _ => return Err(anyhow!("Unhandled first_char in redis data {}", first_char)),
+        }
+    }
+
+    pub fn as_string(&self) -> Option<String> {
+        match self {
+            Self::SimpleString(data) => Some(data.clone()),
+            Self::Error(data) => Some(data.clone()),
+            Self::BulkString(data) => Some(data.clone()),
+            Self::NullBulkString => None,
+            Self::Integer(data) => Some(data.to_string()),
+            Self::Array(data) => None,
+
         }
     }
 }
@@ -185,6 +200,39 @@ mod test {
         fn encode() {
             let input = RedisMessageType::SimpleString("Test".into());
             let expected = "+Test\r\n";
+
+            assert_eq!(expected, input.encode())
+        }
+    }
+
+    #[cfg(test)]
+    mod test_error_string {
+        use super::*;
+
+        #[test]
+        fn decode_valid_string() {
+            let expected = RedisMessageType::Error("Test".into());
+            let input = "-Test\r\n";
+
+            let result = RedisMessageType::decode(input).unwrap();
+
+            assert_eq!(expected, result.0);
+        }
+
+        #[test]
+        fn decode_empty_string() {
+            let expected = RedisMessageType::Error("".into());
+            let input = "-\r\n";
+
+            let result = RedisMessageType::decode(input).unwrap();
+
+            assert_eq!(expected, result.0);
+        }
+
+        #[test]
+        fn encode() {
+            let input = RedisMessageType::Error("Test".into());
+            let expected = "-Test\r\n";
 
             assert_eq!(expected, input.encode())
         }
