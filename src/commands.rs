@@ -38,8 +38,8 @@ impl From<&str> for Command {
     }
 }
 
-impl From<RedisMessageType> for Command {
-    fn from(value: RedisMessageType) -> Self {
+impl From<&RedisMessageType> for Command {
+    fn from(value: &RedisMessageType) -> Self {
         match value {
             RedisMessageType::BulkString(val) | RedisMessageType::SimpleString(val) => {
                 Command::from(val.as_str())

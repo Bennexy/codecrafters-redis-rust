@@ -104,70 +104,10 @@ fn recieve_message(mut stream: TcpStream) {
 }
 
 fn process_command_array(array: Vec<RedisMessageType>) -> RedisMessageType {
-    let command = array
-        .get(0)
-        .expect("Redis expects at least a single command!");
 
-    let command: Command = Command::from(*command);
-    return command.execute(array);
+    let (command, args) = array.split_first().expect("Redis expects at least a single command!");
 
+    let command: Command = Command::from(command);
+    return command.execute(args);
 
-    if command == "ECHO" {
-        let echo_val = array
-            .get(1)
-            .expect("Echo expects a second argument to echo!");
-        let value = match echo_val {
-            RedisMessageType::BulkString(val) | RedisMessageType::SimpleString(val) => {
-                val.to_string()
-            }
-            RedisMessageType::Integer(val) => val.to_string(),
-            other => panic!("Redis cannot echo value of type: {}", other.to_string()),
-        };
-
-        return RedisMessageType::BulkString(value);
-    } else if command == "PING" {
-        return RedisMessageType::SimpleString("PONG".into());
-    } else if command == "SET" {
-        let key = array
-            .get(1)
-            .expect("SET expects a key argument!")
-            .as_string()
-            .unwrap();
-        let value = array
-            .get(2)
-            .expect("SET expects a value argument!")
-            .as_string()
-            .unwrap();
-        match GLOBAL_MAP.try_write() {
-            Ok(mut val) => {
-                val.insert(key, value);
-                return RedisMessageType::SimpleString("OK".into());
-            }
-            Err(err) => {
-                let msg = "Unable to set key due to lock!";
-                error!("{msg}");
-                return RedisMessageType::Error(msg.into());
-            }
-        }
-    } else if command == "GET" {
-        let key = array
-            .get(1)
-            .expect("GET expects a key argument!")
-            .as_string()
-            .unwrap();
-        match GLOBAL_MAP.try_read() {
-            Ok(map) => match map.get(&key) {
-                Some(val) => return RedisMessageType::BulkString(val.clone()),
-                None => return RedisMessageType::NullBulkString,
-            },
-            Err(err) => {
-                let msg = "Unable to read key due to lock!";
-                error!("{msg}");
-                return RedisMessageType::Error(msg.into());
-            }
-        }
-    } else {
-        error!("unknown command {}", command);
-        return RedisMessageType::Error(format!("unknown command {}", command).into());
-    };
 }
