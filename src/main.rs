@@ -17,7 +17,7 @@ pub mod utils;
 pub mod commands;
 pub mod db;
 
-use crate::{commands::Command, db::data_store::DB, parser::messages::RedisMessageType};
+use crate::{commands::commands::Command, db::data_store::DB, parser::messages::RedisMessageType};
 
 fn main() {
     let args: Args = Args::parse();
