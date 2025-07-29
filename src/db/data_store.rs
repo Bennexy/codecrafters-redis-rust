@@ -1,10 +1,11 @@
 use core::str;
 use std::{
     collections::HashMap,
-    sync::{Arc, RwLock},
+    sync::{Arc, RwLock, Mutex},
     time::{Duration, Instant},
 };
 
+use log::info;
 use once_cell::sync::Lazy;
 
 pub static DB: Lazy<DataStore> = Lazy::new(|| DataStore::new());
@@ -30,6 +31,7 @@ impl DataStore {
             .get(key)?
             .clone();
 
+        info!("key {} - is expired: {}!", key, value.is_expired());
         if value.is_expired() {
             self.remove_key(key);
             return None;
@@ -71,6 +73,7 @@ impl DataUnit {
             None => return false,
         };
 
+        info!("{}, {}",expiry_time, self.created.elapsed().as_millis());
         return expiry_time <= self.created.elapsed().as_millis();
     }
 }

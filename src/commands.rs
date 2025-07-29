@@ -1,7 +1,10 @@
-use log::error;
+use log::{debug, error, info};
 use std::fmt::Display;
 
-use crate::{parser::messages::RedisMessageType, db::data_store::{DB, DataUnit}};
+use crate::{
+    db::data_store::{DataUnit, DB},
+    parser::messages::RedisMessageType,
+};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Command {
@@ -58,7 +61,7 @@ impl Command {
             Self::PING => return RedisMessageType::SimpleString("PONG".into()),
             Self::ECHO => return echo(args.get(0)),
             Self::GET => return get(args.get(0)),
-            Self::SET => return set(args)
+            Self::SET => return set(args),
         }
     }
 }
@@ -67,65 +70,81 @@ impl Command {
 struct SetCommand {
     key: String,
     value: String,
-    expiry: Option<u128>
+    expiry: Option<u128>,
 }
 
 impl SetCommand {
     fn new(value: &[RedisMessageType]) -> Result<SetCommand, RedisMessageType> {
-
         let key_value = match value.get(0) {
             Some(val) => val,
-            None => return Err(RedisMessageType::Error("SET expects an key argument!".to_string())),
+            None => {
+                return Err(RedisMessageType::Error(
+                    "SET expects an key argument!".to_string(),
+                ))
+            }
         };
-    
+
         let value_value = match value.get(1) {
             Some(val) => val,
-            None => return Err(RedisMessageType::Error("SET expects an value argument!".to_string()),)
+            None => {
+                return Err(RedisMessageType::Error(
+                    "SET expects an value argument!".to_string(),
+                ))
+            }
         };
 
         let key = match key_value.as_string() {
             Some(val) => val,
             None => {
-                return Err(RedisMessageType::Error("SET expects a Stringable key argument!".to_string()))
+                return Err(RedisMessageType::Error(
+                    "SET expects a Stringable key argument!".to_string(),
+                ))
             }
         };
-    
+
         // todo: save not only string values
         let save_value = match value_value.as_string() {
             Some(val) => val,
             None => {
-                return Err(RedisMessageType::Error("SET expects a Stringable value argument!".to_string()))
+                return Err(RedisMessageType::Error(
+                    "SET expects a Stringable value argument!".to_string(),
+                ))
             }
         };
 
         let expiry: Option<u128> = match value.get(2) {
             Some(val) => match val.as_string() {
-                Some(val) => if val.to_uppercase() == "PX" {
-                    match value.get(3) {
-                        Some(val) => match val {
-                            RedisMessageType::Integer(val) => Some(*val.max(&0) as u128),
-                            _ => None
-                        },
-                        None => None
-                        
+                Some(val) => {
+                    info!("found px arg");
+                    if val.to_uppercase() == "PX" {
+                        match value.get(3) {
+                            Some(val) => match val {
+                                RedisMessageType::BulkString(val) => match i64::from_str_radix(val, 10) {
+                                    Ok(val) => Some(val.max(0) as u128),
+                                    Err(_) => None,
+                                }
+                                _ => None,
+                            },
+                            None => None,
+                        }
+                    } else {
+                        None
                     }
-                } else {
-                    None
-                },
-                None => None
+                }
+                None => None,
             },
-            None => None
+            None => None,
         };
 
-
         return Ok(SetCommand {
-            key, value: save_value, expiry
+            key,
+            value: save_value,
+            expiry,
         });
-        
     }
 
     pub fn get_data_unit(&self) -> DataUnit {
-        return DataUnit::new(self.value.clone(), self.expiry)
+        return DataUnit::new(self.value.clone(), self.expiry);
     }
 }
 
@@ -169,11 +188,12 @@ fn get(arg: Option<&RedisMessageType>) -> RedisMessageType {
 }
 
 fn set(args: &[RedisMessageType]) -> RedisMessageType {
-
     let set_command = match SetCommand::new(args) {
         Ok(val) => val,
-        Err(message) => return message
+        Err(message) => return message,
     };
+
+    debug!("set command? {:#?}", set_command);
 
     DB.set(set_command.key.clone(), set_command.get_data_unit());
     return RedisMessageType::SimpleString("OK".into());
