@@ -1,28 +1,22 @@
 #![allow(warnings)]
 
+use anyhow::anyhow;
+use bytes::BytesMut;
 use core::str;
+use log::{debug, error, info, trace};
 use std::{
-    collections::HashMap,
-    error::Error,
-    io::{self, BufRead, BufReader, ErrorKind, Read, Write},
+    io::{self, ErrorKind, Read, Write},
     net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream},
     result::Result,
-    sync::{Arc, RwLock},
 };
+use utils::{cli::Args, logger::set_log_level, thread_pool::ThreadPool};
 
 pub mod consts;
 pub mod parser;
 pub mod utils;
+pub mod commands;
 
-use crate::parser::messages::RedisMessageType;
-use anyhow::anyhow;
-use bytes::BytesMut;
-use log::{debug, error, info, trace};
-use once_cell::sync::Lazy;
-use utils::{cli::Args, logger::set_log_level, thread_pool::ThreadPool};
-
-static GLOBAL_MAP: Lazy<Arc<RwLock<HashMap<String, String>>>> =
-    Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));
+use crate::{commands::Command, consts::GLOBAL_MAP, parser::messages::RedisMessageType};
 
 fn main() {
     let args: Args = Args::parse();
@@ -114,14 +108,9 @@ fn process_command_array(array: Vec<RedisMessageType>) -> RedisMessageType {
         .get(0)
         .expect("Redis expects at least a single command!");
 
-    let command = match command {
-        RedisMessageType::SimpleString(ref val) | &RedisMessageType::BulkString(ref val) => val,
-        other => panic!(
-            "Redis requires the first argument to be a string. Recieved a {}",
-            other.to_string()
-        ),
-    }
-    .to_uppercase();
+    let command: Command = Command::from(*command);
+    return command.execute(array);
+
 
     if command == "ECHO" {
         let echo_val = array
