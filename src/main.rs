@@ -15,6 +15,7 @@ pub mod consts;
 pub mod parser;
 pub mod utils;
 pub mod commands;
+pub mod db;
 
 use crate::{commands::Command, consts::GLOBAL_MAP, parser::messages::RedisMessageType};
 

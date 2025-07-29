@@ -1,7 +1,7 @@
 use log::error;
 use std::fmt::Display;
 
-use crate::{consts::GLOBAL_MAP, parser::messages::RedisMessageType};
+use crate::{parser::messages::RedisMessageType, db::data_store::{DB, DataUnit}};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Command {
@@ -63,6 +63,72 @@ impl Command {
     }
 }
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+struct SetCommand {
+    key: String,
+    value: String,
+    expiry: Option<u128>
+}
+
+impl SetCommand {
+    fn new(value: &[RedisMessageType]) -> Result<SetCommand, RedisMessageType> {
+
+        let key_value = match value.get(0) {
+            Some(val) => val,
+            None => return Err(RedisMessageType::Error("SET expects an key argument!".to_string())),
+        };
+    
+        let value_value = match value.get(1) {
+            Some(val) => val,
+            None => return Err(RedisMessageType::Error("SET expects an value argument!".to_string()),)
+        };
+
+        let key = match key_value.as_string() {
+            Some(val) => val,
+            None => {
+                return Err(RedisMessageType::Error("SET expects a Stringable key argument!".to_string()))
+            }
+        };
+    
+        // todo: save not only string values
+        let save_value = match value_value.as_string() {
+            Some(val) => val,
+            None => {
+                return Err(RedisMessageType::Error("SET expects a Stringable value argument!".to_string()))
+            }
+        };
+
+        let expiry: Option<u128> = match value.get(2) {
+            Some(val) => match val.as_string() {
+                Some(val) => if val.to_uppercase() == "PX" {
+                    match value.get(3) {
+                        Some(val) => match val {
+                            RedisMessageType::Integer(val) => Some(*val.max(&0) as u128),
+                            _ => None
+                        },
+                        None => None
+                        
+                    }
+                } else {
+                    None
+                },
+                None => None
+            },
+            None => None
+        };
+
+
+        return Ok(SetCommand {
+            key, value: save_value, expiry
+        });
+        
+    }
+
+    pub fn get_data_unit(&self) -> DataUnit {
+        return DataUnit::new(self.value.clone(), self.expiry)
+    }
+}
+
 fn echo(arg: Option<&RedisMessageType>) -> RedisMessageType {
     let value = match arg {
         Some(val) => val,
@@ -96,55 +162,19 @@ fn get(arg: Option<&RedisMessageType>) -> RedisMessageType {
         }
     };
 
-    match GLOBAL_MAP.try_read() {
-        Ok(map) => match map.get(&key) {
-            Some(val) => return RedisMessageType::BulkString(val.clone()),
-            None => return RedisMessageType::NullBulkString,
-        },
-        Err(err) => {
-            let msg = "Unable to read key due to lock!";
-            error!("{msg}");
-            return RedisMessageType::Error(msg.into());
-        }
+    match DB.get(&key) {
+        Some(val) => return RedisMessageType::BulkString(val.clone()),
+        None => return RedisMessageType::NullBulkString,
     }
 }
 
 fn set(args: &[RedisMessageType]) -> RedisMessageType {
-    let key_value = match args.get(0) {
-        Some(val) => val,
-        None => return RedisMessageType::Error("SET expects an key argument!".to_string()),
+
+    let set_command = match SetCommand::new(args) {
+        Ok(val) => val,
+        Err(message) => return message
     };
 
-    let value_value = match args.get(1) {
-        Some(val) => val,
-        None => return RedisMessageType::Error("SET expects an value argument!".to_string()),
-    };
-
-    let key = match key_value.as_string() {
-        Some(val) => val,
-        None => {
-            return RedisMessageType::Error("SET expects a Stringable key argument!".to_string())
-        }
-    };
-
-    // todo: save not only string values
-    let value = match value_value.as_string() {
-        Some(val) => val,
-        None => {
-            return RedisMessageType::Error("SET expects a Stringable value argument!".to_string())
-        }
-    };
-
-
-    match GLOBAL_MAP.try_write() {
-        Ok(mut val) => {
-            val.insert(key, value);
-            return RedisMessageType::SimpleString("OK".into());
-        }
-        Err(err) => {
-            let msg = "Unable to set key due to lock!";
-            error!("{msg}");
-            return RedisMessageType::Error(msg.into());
-        }
-    }
+    DB.set(set_command.key.clone(), set_command.get_data_unit());
+    return RedisMessageType::SimpleString("OK".into());
 }
