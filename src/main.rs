@@ -17,10 +17,12 @@ pub mod utils;
 pub mod commands;
 pub mod db;
 
-use crate::{commands::Command, consts::GLOBAL_MAP, parser::messages::RedisMessageType};
+use crate::{commands::Command, db::data_store::DB, parser::messages::RedisMessageType};
 
 fn main() {
     let args: Args = Args::parse();
+
+    DB.set_args(&args);
 
     let server_address = SocketAddr::new(args.host, args.port);
     let pool = ThreadPool::new(args.threads.into());
