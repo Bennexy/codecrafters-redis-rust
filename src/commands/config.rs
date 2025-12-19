@@ -1,5 +1,4 @@
-use crate::{commands::commands::Execute, db::data_store::DB, parser::messages::RedisMessageType};
-
+use crate::{commands::commands::Execute, db::data_store::get_db, parser::messages::RedisMessageType};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum ConfigAction {
@@ -39,65 +38,59 @@ impl From<String> for ConfigValue {
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
-pub struct ConfigCommand {
-    action: ConfigAction,
-    value: ConfigValue,
-}
+pub struct ConfigCommand;
 
 impl ConfigCommand {
-    pub fn new(value: &[RedisMessageType]) -> Result<ConfigCommand, RedisMessageType> {
-        let action_value = match value.get(0) {
+    pub fn new() -> Self {
+        return Self {};
+    }
+}
+
+impl Execute for ConfigCommand {
+    fn execute(&self, args: &[RedisMessageType]) -> RedisMessageType {
+        let action_value = match args.get(0) {
             Some(val) => val,
             None => {
-                return Err(RedisMessageType::Error(
+                return RedisMessageType::Error(
                     "SET expects an key argument!".to_string(),
-                ))
+                )
             }
         };
 
-        let value_value = match value.get(1) {
+        let value_value = match args.get(1) {
             Some(val) => val,
             None => {
-                return Err(RedisMessageType::Error(
+                return RedisMessageType::Error(
                     "SET expects an value argument!".to_string(),
-                ))
+                )
             }
         };
 
         let action: ConfigAction = match action_value.as_string() {
             Some(val) => val.into(),
             None => {
-                return Err(RedisMessageType::Error(
+                return RedisMessageType::Error(
                     "SET expects a Stringable key argument!".to_string(),
-                ))
+                )
             }
         };
 
         let config_value: ConfigValue = match value_value.as_string() {
             Some(val) => val.into(),
             None => {
-                return Err(RedisMessageType::Error(
+                return RedisMessageType::Error(
                     "SET expects a Stringable value argument!".to_string(),
-                ))
+                )
             }
         };
 
-        return Ok(ConfigCommand {
-            action: action,
-            value: config_value,
-        });
-    }
-}
-
-impl Execute for ConfigCommand {
-    fn execute(&self) -> RedisMessageType {
-        return match &self.action {
-            ConfigAction::Get => match &self.value {
+        return match action {
+            ConfigAction::Get => match config_value {
                 ConfigValue::DbDir => {
                     return RedisMessageType::Array(vec![
                         RedisMessageType::BulkString("dir".into()),
                         RedisMessageType::BulkString(
-                            (DB.get_config()
+                            (get_db().get_config()
                                 .db_dir
                                 .to_str()
                                 .expect("Error getting the db_dir string. Should never happen.")
@@ -108,15 +101,21 @@ impl Execute for ConfigCommand {
                 ConfigValue::DbFilename => {
                     return RedisMessageType::Array(vec![
                         RedisMessageType::BulkString("dbfilename".into()),
-                        RedisMessageType::BulkString((DB.get_config().db_filename)),
+                        RedisMessageType::BulkString((get_db().get_config().db_filename)),
                     ])
                 }
                 ConfigValue::Unknown(val) => {
-                    return RedisMessageType::Error(format!("Unknown get config value: {}!", val))
+                    return RedisMessageType::Error(format!(
+                        "Unknown get config value: {}!",
+                        val
+                    ))
                 }
             },
             ConfigAction::Unknown(val) => {
-                return RedisMessageType::Error(format!("Unkown config operation: {}!", val))
+                return RedisMessageType::Error(format!(
+                    "Unkown config operation: {}!",
+                    val
+                ))
             }
         };
     }

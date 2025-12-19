@@ -3,32 +3,32 @@ use std::fmt::Display;
 
 use crate::{
     commands::{config::ConfigCommand, echo::EchoCommand, get::GetCommand, set::SetCommand},
-    db::data_store::{DataUnit, DB},
+    db::data_store::{DataUnit},
     parser::messages::RedisMessageType,
 };
 
 pub trait Execute {
-    fn execute(&self) -> RedisMessageType;
+    fn execute(&self, args: &[RedisMessageType]) -> RedisMessageType;
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub enum Command {
     PING,
-    ECHO,
-    GET,
-    SET,
-    CONFIG,
+    ECHO(EchoCommand),
+    GET(GetCommand),
+    SET(SetCommand),
+    CONFIG(ConfigCommand),
     Unknown(String),
 }
 
 impl Display for Command {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let name = match self {
-            Self::ECHO => "ECHO".into(),
             Self::PING => "PING".into(),
-            Self::GET => "GET".into(),
-            Self::SET => "SET".into(),
-            Self::CONFIG => "CONFIG".into(),
+            Self::ECHO(_) => "ECHO".into(),
+            Self::GET(_) => "GET".into(),
+            Self::SET(_) => "SET".into(),
+            Self::CONFIG(_) => "CONFIG".into(),
             Self::Unknown(value) => format!("Unkown::{value}"),
         };
 
@@ -39,11 +39,11 @@ impl Display for Command {
 impl From<&str> for Command {
     fn from(s: &str) -> Self {
         match s.to_uppercase().as_str() {
-            "ECHO" => Self::ECHO,
             "PING" => Self::PING,
-            "GET" => Self::GET,
-            "SET" => Self::SET,
-            "CONFIG" => Self::CONFIG,
+            "GET" => Self::GET(GetCommand::new()),
+            "SET" => Self::SET(SetCommand::new()),
+            "ECHO" => Self::ECHO(EchoCommand::new()),
+            "CONFIG" => Self::CONFIG(ConfigCommand::new()),
             other => Self::Unknown(s.to_uppercase().clone()),
         }
     }
@@ -60,64 +60,21 @@ impl From<&RedisMessageType> for Command {
     }
 }
 
-impl Command {
-    pub fn execute(&self, args: &[RedisMessageType]) -> RedisMessageType {
+impl Execute for Command {
+    fn execute(&self, args: &[RedisMessageType]) -> RedisMessageType {
         match self {
             Self::PING => return RedisMessageType::SimpleString("PONG".into()),
-            Self::ECHO => {
-                return EchoCommand::new(args)
-                    .map(|cmd| cmd.execute())
-                    .unwrap_or_else(|err| err)
-            }
-            Self::GET => {
-                return GetCommand::new(args)
-                    .map(|cmd| cmd.execute())
-                    .unwrap_or_else(|err| err)
-            }
-            Self::SET => {
-                return SetCommand::new(args)
-                    .map(|cmd| {
-                        debug!("set command? {:#?}", cmd);
-                        cmd.execute()
-                    })
-                    .unwrap_or_else(|err| err)
-            }
-            Self::CONFIG => {
-                return ConfigCommand::new(args)
-                    .map(|cmd| cmd.execute())
-                    .unwrap_or_else(|err| err)
-            }
+            Self::Unknown(val) => {
+                return RedisMessageType::Error(format!("Unknown Redis command: {}", val.clone()))
+            },
+            Self::ECHO(command) => command.execute(args),
+            Self::GET(command) => command.execute(args),
+            Self::SET(command) => command.execute(args),
+            Self::CONFIG(command) => command.execute(args),
             Self::Unknown(val) => {
                 return RedisMessageType::Error(format!("Unknown Redis command: {}", val.clone()))
             }
             
         }
     }
-}
-
-fn echo(args: &[RedisMessageType]) -> RedisMessageType {
-    return EchoCommand::new(args)
-        .map(|cmd| cmd.execute())
-        .unwrap_or_else(|err| err);
-}
-
-fn get(args: &[RedisMessageType]) -> RedisMessageType {
-    return GetCommand::new(args)
-        .map(|cmd| cmd.execute())
-        .unwrap_or_else(|err| err);
-}
-
-fn set(args: &[RedisMessageType]) -> RedisMessageType {
-    return SetCommand::new(args)
-        .map(|cmd| {
-            debug!("set command? {:#?}", cmd);
-            cmd.execute()
-        })
-        .unwrap_or_else(|err| err);
-}
-
-fn config(args: &[RedisMessageType]) -> RedisMessageType {
-    return ConfigCommand::new(args)
-        .map(|cmd| cmd.execute())
-        .unwrap_or_else(|err| err);
 }

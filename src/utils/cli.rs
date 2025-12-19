@@ -2,9 +2,9 @@ use std::{
     fs::{self, File}, net::{IpAddr, Ipv4Addr}, path::{Path, PathBuf}, str::FromStr
 };
 
-use log::{info, LevelFilter};
+use log::{info, trace, LevelFilter};
 
-use crate::db;
+use crate::{db::data_store::DbConfig, utils::logger::set_log_level};
 
 pub struct Args {
     pub host: IpAddr,
@@ -97,8 +97,7 @@ impl Args {
             }
         }
 
-        create_file_if_missing(&db_dir.clone(), &db_filename);
-        return Args {
+        let args = Args {
             host,
             port,
             threads,
@@ -106,6 +105,14 @@ impl Args {
             db_dir: db_dir.to_path_buf(),
             db_filename
         };
+
+        set_log_level(&args);
+        create_file_if_missing(&args.db_dir.clone(), &args.db_filename);
+        return args;
+    }
+
+    pub fn get_db_config(&self) -> DbConfig {
+        return DbConfig::new(self.db_dir.clone(), self.db_filename.clone());
     }
 }
 
@@ -115,15 +122,16 @@ fn create_file_if_missing(root: &Path, filename: &str) {
 
     // Create parent directories if needed
     if let Some(parent) = full_path.parent() {
-        println!("Creating the redis db file dir.");
+        trace!("Creating the redis db file dir.");
         fs::create_dir_all(parent).unwrap();
     }
 
+    // should not be auto created!
     // Only create the file if it doesn't exist
-    if !full_path.exists() {
-        println!("Creating the redis db file.");
-        File::create(&full_path).unwrap(); // Creates empty file
-    }
+    // if !full_path.exists() {
+    //     println!("Creating the redis db file.");
+    //     File::create(&full_path).unwrap(); // Creates empty file
+    // }
 }
 
 #[cfg(test)]

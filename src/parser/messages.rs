@@ -81,6 +81,18 @@ impl RedisMessageType {
 
         }
     }
+
+    pub fn simple_string<S: Into<String>>(s: S) -> Self {
+        RedisMessageType::SimpleString(s.into())
+    }
+
+    pub fn error<S: Into<String>>(s: S) -> Self {
+        RedisMessageType::Error(s.into())
+    }
+
+    pub fn bulk_string<S: Into<String>>(s: S) -> Self {
+        RedisMessageType::BulkString(s.into())
+    }
 }
 
 fn encode_array_elements(data: &Vec<RedisMessageType>) -> String {
