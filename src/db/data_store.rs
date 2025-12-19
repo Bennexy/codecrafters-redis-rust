@@ -1,17 +1,13 @@
-use core::str;
 use std::{
-    collections::HashMap,
     path::PathBuf,
-    sync::{Arc, Mutex, RwLock},
+    sync::{Arc, RwLock},
     time::{Duration, Instant},
 };
 
 use dashmap::DashMap;
 
-use log::info;
-use once_cell::sync::{Lazy, OnceCell};
-
-use crate::utils::cli::Args;
+use log::{info, trace};
+use once_cell::sync::{OnceCell};
 
 // static DB: Lazy<DataStore> = Lazy::new(|| {DataStore::init(DbConfig::empty())});
 static DB: OnceCell<DataStore> = OnceCell::new();
@@ -22,6 +18,7 @@ pub fn get_db() -> &'static DataStore {
 pub fn init_db(db_config: DbConfig) {
     let data_store = DataStore::init(db_config);
     DB.set(data_store).expect("Config can only be initialized once");
+    trace!("Config has been initialized!")
 }
 
 #[derive(Debug, Clone)]
@@ -75,31 +72,42 @@ impl DataStore {
             .get(&key)?
             .clone();
 
-        info!("key {} - is expired: {}!", key, value.is_expired());
         if value.is_expired() {
             self.remove_key(&key);
+            info!("Key '{}' - is expired and has been removed!", &key);
             return None;
         }
-
+        
+        trace!("Value of key '{}' found and returned", &key);
         return Some(value.data);
     }
 
     fn remove_key<S: Into<String>>(&self, key: S) {
-        self.db.remove(&key.into());
+        let key = key.into();
+        self.db.remove(&key);
+        trace!("Removing value for key: '{}'", &key);
     }
 
     /// Upsets the current HashSet
     pub fn set<S: Into<String>>(&self, key: S, mut value: DataUnit) {
         // Do not change without carefully reading the comments!!!
+        let key = key.into();
 
-        self.db.entry(key.into())
+        trace!("Setting value for {}, {:#?}", &key, &value);
+
+        self.db.entry(key.clone())
             .and_modify(|existing_value| {
                 // Update existing value - We "Swap" the old and the new value for performance reasons. Do NOT use value after the .and_modify call! 
                 // This will use the old_value and not the expected new value
+                trace!("Old value of key: '{}', {:#?}", &key, &existing_value);
                 std::mem::swap(existing_value, &mut value);
+                trace!("Updated value for key: '{}'", &key);
             })
             // .or_insert only is called if the key does not exsist. The usage of value is acceptable here since the values arent swapped
-            .or_insert(value); 
+            .or_insert_with(|| {
+                trace!("Created new value for key: '{}'", &key);
+                value}
+            ); 
     }
 }
 

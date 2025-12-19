@@ -1,9 +1,7 @@
-use log::{debug, error, info};
 use std::fmt::Display;
 
 use crate::{
     commands::{config::ConfigCommand, echo::EchoCommand, get::GetCommand, set::SetCommand},
-    db::data_store::{DataUnit},
     parser::messages::RedisMessageType,
 };
 
@@ -44,7 +42,7 @@ impl From<&str> for Command {
             "SET" => Self::SET(SetCommand::new()),
             "ECHO" => Self::ECHO(EchoCommand::new()),
             "CONFIG" => Self::CONFIG(ConfigCommand::new()),
-            other => Self::Unknown(s.to_uppercase().clone()),
+            _other => Self::Unknown(s.to_uppercase().clone()),
         }
     }
 }

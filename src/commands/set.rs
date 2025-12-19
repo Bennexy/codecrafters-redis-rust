@@ -1,6 +1,6 @@
-use std::time::Duration;use std::time::Instant;
+use std::time::Duration;
 
-use log::debug;
+use log::trace;
 
 use crate::{
     commands::commands::Execute,
@@ -50,7 +50,7 @@ impl Execute for SetCommand {
 
         let expiry = match parse_expiry(args) {
             Ok(value) => value,
-            Err(value) => match (value) {
+            Err(value) => match value {
                 Some(val) => return val,
                 _ => None,
             },
@@ -70,6 +70,7 @@ fn parse_expiry(args: &[RedisMessageType]) -> Result<Option<Duration>, Option<Re
             "Provided time arg is not a string!",
         ))?;
 
+    trace!("Time arg: {}", time_arg);
     if !vec!["EX", "PX", "EXAT", "PXAT"].contains(&time_arg.as_str()) {
         return Ok(None);
     }
@@ -102,6 +103,8 @@ fn parse_expiry(args: &[RedisMessageType]) -> Result<Option<Duration>, Option<Re
         "EXAT" | "PXAT" => return Err(Some(RedisMessageType::error("EXAT and EXAT arguments are not yet supported in this implementation!"))),
         _ => panic!("Can never happen!")
     };
+
+    trace!("Expiration duration: {:?}", expiration_duration);
 
     return Ok(Some(expiration_duration));
 }

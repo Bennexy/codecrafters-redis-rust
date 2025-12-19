@@ -1,0 +1,6 @@
+default_job = "run"
+default_watch = true
+
+[jobs.run]
+command = ["./your_program.sh", "--log-level", "trace"]
+watch = ["src"]

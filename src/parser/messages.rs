@@ -77,7 +77,7 @@ impl RedisMessageType {
             Self::BulkString(data) => Some(data.clone()),
             Self::NullBulkString => None,
             Self::Integer(data) => Some(data.to_string()),
-            Self::Array(data) => None,
+            Self::Array(_) => None,
 
         }
     }
@@ -160,7 +160,7 @@ fn parse_array(s: &str) -> RedisDecodeResult {
     let mut array = Vec::with_capacity(length);
     let mut all_value_length = 0;
 
-    for _ in (0..length) {
+    for _ in 0..length {
         let message_type = RedisMessageType::decode(value)?;
         all_value_length += message_type.1;
         value = &value[message_type.1..];

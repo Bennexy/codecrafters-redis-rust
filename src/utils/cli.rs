@@ -2,7 +2,7 @@ use std::{
     fs::{self, File}, net::{IpAddr, Ipv4Addr}, path::{Path, PathBuf}, str::FromStr
 };
 
-use log::{info, trace, LevelFilter};
+use log::{trace, LevelFilter};
 
 use crate::{db::data_store::DbConfig, utils::logger::set_log_level};
 
@@ -128,10 +128,10 @@ fn create_file_if_missing(root: &Path, filename: &str) {
 
     // should not be auto created!
     // Only create the file if it doesn't exist
-    // if !full_path.exists() {
-    //     println!("Creating the redis db file.");
-    //     File::create(&full_path).unwrap(); // Creates empty file
-    // }
+    if !full_path.exists() {
+        println!("Creating the redis db file.");
+        File::create(&full_path).unwrap(); // Creates empty file
+    }
 }
 
 #[cfg(test)]

@@ -1,15 +1,13 @@
 #![allow(warnings)]
 
-use anyhow::anyhow;
-use bytes::BytesMut;
 use core::str;
-use log::{debug, error, info, trace};
+use log::{error, info, trace};
 use std::{
     io::{self, ErrorKind, Read, Write},
-    net::{Ipv4Addr, SocketAddr, SocketAddrV4, TcpListener, TcpStream},
+    net::{SocketAddr, TcpListener, TcpStream},
     result::Result,
 };
-use utils::{cli::Args, logger::set_log_level, thread_pool::ThreadPool};
+use utils::{cli::Args, thread_pool::ThreadPool};
 
 pub mod consts;
 pub mod parser;
@@ -27,9 +25,9 @@ fn main() {
     let pool = ThreadPool::new(args.threads.into());
 
     info!("Starting server with {} threads on ip: {} and port: {}", args.threads, server_address.ip(), server_address.port());
-    let mut listener = match TcpListener::bind(server_address) {
+    let listener = match TcpListener::bind(server_address) {
         Ok(server) => server,
-        Err(err) => panic!("Unable to bind TcpListener to address: {}", server_address),
+        Err(err) => panic!("Unable to bind TcpListener to address: {} due to {}", server_address, err),
     };
 
 
@@ -45,24 +43,22 @@ fn main() {
 
 /// Reads the data provided in a single TCP message.
 fn read_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
-    let mut data = BytesMut::with_capacity(4096);
-    let mut temp_buffer: [u8; 1024] = [0; 1024];
+    const BUFFER_SIZE: usize = 1024;
+    let mut data = Vec::with_capacity(BUFFER_SIZE * 4); // pre-allocate
+    let mut buf = [0u8; BUFFER_SIZE];
 
     loop {
-        let bytes_read = stream.read(&mut temp_buffer)?;
-        trace!("Bytes recieved: {bytes_read}");
-        trace!("{:?}", generate_hex_log(&temp_buffer));
+        let n = stream.read(&mut buf)?;
+        trace!("Bytes received: {}", n);
 
-        let vals = &temp_buffer.as_slice()[..bytes_read];
-        data.extend_from_slice(vals);
+        data.extend_from_slice(&buf[..n]);
 
-        if bytes_read < 1024 || bytes_read == 0 {
-            break;
+        if n < BUFFER_SIZE {
+            break; // no more data immediately available or EOF
         }
     }
 
-    // data.shrink_to_fit();
-    return Ok(data.to_vec());
+    Ok(data)
 }
 
 fn recieve_message(mut stream: TcpStream) {
@@ -71,7 +67,7 @@ fn recieve_message(mut stream: TcpStream) {
         let raw_message = match read_message(&mut stream) {
             Ok(raw_message) => {
                 trace!("Successfully read tcp message. {:?}", generate_hex_log(&raw_message));
-                if (raw_message.len() == 0) {
+                if raw_message.is_empty() {
                     info!("No bytes recieved. Closing connection");
                     return;
                 }
@@ -101,7 +97,7 @@ fn recieve_message(mut stream: TcpStream) {
             ),
         };
 
-        stream.write_all(response.encode().as_bytes());
+        stream.write_all(response.encode().as_bytes()).expect("Failed to write to stream. Should never happen!");
     }
 }
 
