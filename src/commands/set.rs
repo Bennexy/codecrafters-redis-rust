@@ -257,7 +257,8 @@ fn parse_expiry(arg: Option<&RedisMessageType>) -> Result<u64, RedisMessageType>
     return Ok(numeric_value);
 }
 
-fn expiry_from_unix_secs(unix_secs: u64) -> Duration {
+// todo: needs overhaul!
+pub fn expiry_from_unix_secs(unix_secs: u64) -> Duration {
     let now_system = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("System time before Unix epoch");
@@ -266,7 +267,7 @@ fn expiry_from_unix_secs(unix_secs: u64) -> Duration {
     return Duration::from_secs(delta);
 }
 
-fn expiry_from_unix_millis(unix_millis: u64) -> Duration {
+pub fn expiry_from_unix_millis(unix_millis: u64) -> Duration {
     let now_system = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .expect("System time before Unix epoch");
