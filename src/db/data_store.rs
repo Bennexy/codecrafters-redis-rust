@@ -9,7 +9,6 @@ use dashmap::DashMap;
 use log::{info, trace};
 use once_cell::sync::{OnceCell};
 
-// static DB: Lazy<DataStore> = Lazy::new(|| {DataStore::init(DbConfig::empty())});
 static DB: OnceCell<DataStore> = OnceCell::new();
 pub fn get_db() -> &'static DataStore {
     return DB.get().expect("The db has not been initialized yet. This should never happen!");
@@ -139,11 +138,15 @@ impl DataUnit {
             .map(|deadline| Instant::now() >= deadline)
             .unwrap_or(false);
     }
+
+    pub fn get_expiry_deadline(&self) -> Option<Instant> {
+        return self.expiry_deadline;
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    // use super::*;
 
     #[cfg(test)]
     mod test_data_store {
@@ -205,8 +208,9 @@ mod tests {
 
 
     #[cfg(test)]
-    mod concurrency_tests {
-        use super::*;
+    mod test_concurrency_data_store {
+        use crate::db::data_store::{DataStore, DataUnit, DbConfig};
+
         use std::sync::Arc;
         use std::thread;
         use std::time::Duration;
