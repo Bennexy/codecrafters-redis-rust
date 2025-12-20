@@ -18,16 +18,7 @@ pub enum RedisMessageType {
 
 impl Display for RedisMessageType {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        let name = match self {
-            Self::SimpleString(_) => "SimpleString",
-            Self::Error(_) => "Error",
-            Self::Array(_) => "Array",
-            Self::BulkString(_) => "BulkString",
-            Self::NullBulkString => "NullBulkString",
-            Self::Integer(_) => "Integer"
-        };
-
-        return write!(f, "{}", name);
+        return write!(f, "{}", self.message_type());
     }
 }
 
@@ -92,6 +83,17 @@ impl RedisMessageType {
 
     pub fn bulk_string<S: Into<String>>(s: S) -> Self {
         RedisMessageType::BulkString(s.into())
+    }
+
+    pub fn message_type(&self) -> &'static str {
+        return match self {
+            Self::SimpleString(_) => "SimpleString",
+            Self::Error(_) => "Error",
+            Self::Array(_) => "Array",
+            Self::BulkString(_) => "BulkString",
+            Self::NullBulkString => "NullBulkString",
+            Self::Integer(_) => "Integer"
+        };
     }
 }
 
