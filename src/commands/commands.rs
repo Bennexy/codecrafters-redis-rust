@@ -1,7 +1,7 @@
 use std::fmt::Display;
 
 use crate::{
-    commands::{config::ConfigCommand, echo::EchoCommand, get::GetCommand, set::SetCommand},
+    commands::{config::ConfigCommand, echo::EchoCommand, get::GetCommand, keys::KeysCommand, save::SaveCommand, set::SetCommand},
     parser::messages::RedisMessageType,
 };
 
@@ -16,6 +16,8 @@ pub enum Command {
     GET(GetCommand),
     SET(SetCommand),
     CONFIG(ConfigCommand),
+    KEYS(KeysCommand),
+    SAVE(SaveCommand),
     Unknown(String),
 }
 
@@ -27,6 +29,8 @@ impl Display for Command {
             Self::GET(_) => "GET".into(),
             Self::SET(_) => "SET".into(),
             Self::CONFIG(_) => "CONFIG".into(),
+            Self::KEYS(_) => "KEYS".into(),
+            Self::SAVE(_) => "SAVE".into(),
             Self::Unknown(value) => format!("Unkown::{value}"),
         };
 
@@ -42,6 +46,8 @@ impl From<&str> for Command {
             "SET" => Self::SET(SetCommand::new()),
             "ECHO" => Self::ECHO(EchoCommand::new()),
             "CONFIG" => Self::CONFIG(ConfigCommand::new()),
+            "KEYS" => Self::KEYS(KeysCommand::new()),
+            "SAVE" => Self::SAVE(SaveCommand::new()),
             _other => Self::Unknown(s.to_uppercase().clone()),
         }
     }
@@ -69,6 +75,8 @@ impl Execute for Command {
             Self::GET(command) => command.execute(args),
             Self::SET(command) => command.execute(args),
             Self::CONFIG(command) => command.execute(args),
+            Self::KEYS(command) => command.execute(args),
+            Self::SAVE(command) => command.execute(args),
             Self::Unknown(val) => {
                 return RedisMessageType::Error(format!("Unknown Redis command: {}", val.clone()))
             }

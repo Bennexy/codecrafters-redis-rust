@@ -1,22 +1,27 @@
 use std::{
-    path::PathBuf,
-    sync::{Arc, RwLock},
-    time::{Duration, Instant},
+    fs, path::PathBuf, sync::{Arc, RwLock}, time::{Duration, Instant, SystemTime}
 };
 
 use dashmap::DashMap;
 
-use log::{info, trace};
-use once_cell::sync::{OnceCell};
+use log::{debug, info, trace};
+use once_cell::sync::OnceCell;
+use anyhow::{Result, anyhow};
+
+use crate::db::db_file::{Database, RdbFile};
 
 static DB: OnceCell<DataStore> = OnceCell::new();
 pub fn get_db() -> &'static DataStore {
-    return DB.get().expect("The db has not been initialized yet. This should never happen!");
+    return DB
+        .get()
+        .expect("The db has not been initialized yet. This should never happen!");
 }
 
 pub fn init_db(db_config: DbConfig) {
     let data_store = DataStore::init(db_config);
-    DB.set(data_store).expect("Config can only be initialized once");
+    DB.set(data_store)
+        .expect("Config can only be initialized once");
+
     trace!("Config has been initialized!")
 }
 
@@ -35,7 +40,14 @@ impl DbConfig {
     }
 
     pub fn new(db_dir: PathBuf, db_filename: String) -> Self {
-        return Self { db_dir, db_filename }
+        return Self {
+            db_dir,
+            db_filename,
+        };
+    }
+
+    fn get_full_db_file_path(&self) -> PathBuf {
+        return self.db_dir.join(self.db_filename.clone());
     }
 }
 
@@ -47,10 +59,40 @@ pub struct DataStore {
 
 impl DataStore {
     fn init(db_config: DbConfig) -> Self {
+
+        let map = Self::load_data_from_dbfile(&db_config).unwrap_or(DashMap::new());
         return Self {
-            db: Arc::new(DashMap::new()),
+            db: Arc::new(map),
             config: Arc::new(RwLock::new(db_config)),
         };
+    }
+
+    fn load_data_from_dbfile(db_config: &DbConfig) -> Result<DashMap<String, DataUnit>> {
+        
+        let path = db_config.get_full_db_file_path();
+        if !path.is_file() {
+            anyhow!("DB file at path {:?} is missing or is empty!", path);
+        }
+        debug!("Loading db file");
+        let raw_data: Vec<u8> = fs::read(path)?;
+        trace!("Loaded db file");
+        let rdb_file = RdbFile::decode(raw_data)?;
+        debug!("Parsed db file contents into memory");
+        let dash_map = rdb_file.get_database().to_dashmap();
+        info!("Successfully loaded db file contents into in memory database!");
+        return Ok(dash_map)
+
+    }
+
+    pub fn get_all_keys(&self) -> Vec<String> {
+
+        let mut keys    = Vec::with_capacity(self.db.capacity());
+        for entry in self.db.iter() {
+            keys.push(entry.key.clone());
+
+        }
+        keys.shrink_to_fit();
+        return keys;
     }
 
     pub fn get_config(&self) -> DbConfig {
@@ -63,22 +105,18 @@ impl DataStore {
 
     /// gets the key, if it has expired return None and remove the key from the db.
     pub fn get<S: Into<String>>(&self, key: S) -> Option<String> {
-
         let key = key.into();
         // needs limited scope, else it will threadlock
-        let value = self
-            .db
-            .get(&key)?
-            .clone();
+        let value = self.db.get(&key)?.clone();
 
         if value.is_expired() {
             self.remove_key(&key);
             info!("Key '{}' - is expired and has been removed!", &key);
             return None;
         }
-        
+
         trace!("Value of key '{}' found and returned", &key);
-        return Some(value.data);
+        return Some(value.value);
     }
 
     fn remove_key<S: Into<String>>(&self, key: S) {
@@ -94,9 +132,10 @@ impl DataStore {
 
         trace!("Setting value for {}, {:#?}", &key, &value);
 
-        self.db.entry(key.clone())
+        self.db
+            .entry(key.clone())
             .and_modify(|existing_value| {
-                // Update existing value - We "Swap" the old and the new value for performance reasons. Do NOT use value after the .and_modify call! 
+                // Update existing value - We "Swap" the old and the new value for performance reasons. Do NOT use value after the .and_modify call!
                 // This will use the old_value and not the expected new value
                 trace!("Old value of key: '{}', {:#?}", &key, &existing_value);
                 std::mem::swap(existing_value, &mut value);
@@ -105,33 +144,47 @@ impl DataStore {
             // .or_insert only is called if the key does not exsist. The usage of value is acceptable here since the values arent swapped
             .or_insert_with(|| {
                 trace!("Created new value for key: '{}'", &key);
-                value}
-            ); 
+                value
+            });
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct DataUnit {
-    pub data: String,
-    created: Instant,
+    pub key: String,
+    pub value: String,
     expiry_deadline: Option<Instant>,
 }
 
-impl DataUnit {
-    pub fn new<S: Into<String>>(data: S, ttl: Option<Duration>) -> Self {
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Expiry {
+    Ttl(Duration),
+    Deadline(SystemTime),
+}
+
+impl Expiry {
+    fn get_expiry_deadline(&self) -> Instant {
         let now = Instant::now();
-        let expiry_deadline = match ttl {
-            None => None,
-            Some(val) => Some(now + val),
+        return match self {
+            Self::Ttl(ttl) => now.checked_add(*ttl).unwrap_or(now),
+            Self::Deadline(timespamp) => timespamp
+                .duration_since(SystemTime::now())
+                .map(|duration| now + duration)
+                .unwrap_or(now),
         };
+    }
+}
+
+impl DataUnit {
+    pub fn new<S: Into<String>>(key: S, value: S, ttl: Option<Expiry>) -> Self {
+        let expiry_deadline = ttl.map(|expiry| expiry.get_expiry_deadline());
 
         return Self {
-            data: data.into(),
-            created: now,
+            key: key.into(),
+            value: value.into(),
             expiry_deadline: expiry_deadline,
         };
     }
-
 
     pub fn is_expired(&self) -> bool {
         return self
@@ -152,7 +205,7 @@ mod tests {
     #[cfg(test)]
     mod test_data_store {
 
-        use crate::db::data_store::{DataStore, DataUnit, DbConfig};
+        use crate::db::data_store::{DataStore, DataUnit, DbConfig, Expiry};
         use std::{
             thread,
             time::{Duration, Instant},
@@ -161,52 +214,73 @@ mod tests {
         #[test]
         fn test_set_get_remove() {
             let mut dataStore = DataStore::init(DbConfig::empty());
-            dataStore.set("key", DataUnit::new("value", None));
+            dataStore.set("key", DataUnit::new("key", "value", None));
 
+            assert!(
+                dataStore.db.contains_key("key"),
+                "DataStore must contain the key after setting it"
+            );
+            assert_eq!(
+                "value",
+                dataStore.get("key").unwrap(),
+                "DataStore must have the correct value connected to the key"
+            );
 
-            assert!(dataStore.db.contains_key("key"), "DataStore must contain the key after setting it");
-            assert_eq!("value", dataStore.get("key").unwrap(), "DataStore must have the correct value connected to the key");
+            dataStore.set("key", DataUnit::new("key","value2", None));
+            assert_eq!(
+                "value2",
+                dataStore.get("key").unwrap(),
+                "DataStore must have the overridden value connected to the key"
+            );
 
-
-            dataStore.set("key", DataUnit::new("value2", None));
-            assert_eq!("value2", dataStore.get("key").unwrap(), "DataStore must have the overridden value connected to the key");
-            
             dataStore.remove_key("key");
-            assert!(!dataStore.db.contains_key("key"), "DataStore must not contain the key after removing it");
+            assert!(
+                !dataStore.db.contains_key("key"),
+                "DataStore must not contain the key after removing it"
+            );
         }
 
         #[test]
         fn test_set_get_not_expired() {
             let mut dataStore = DataStore::init(DbConfig::empty());
-            let data = DataUnit::new("value", Some(Duration::from_millis(10)));
-            dataStore.set(
-                "key",
-                data,
-            );
+            let data = DataUnit::new("key","value", Some(Expiry::Ttl(Duration::from_millis(10))));
+            dataStore.set("key", data);
 
-            assert_eq!("value", dataStore.get("key").unwrap(), "Value should not expire instantly!");
+            assert_eq!(
+                "value",
+                dataStore.get("key").unwrap(),
+                "Value should not expire instantly!"
+            );
         }
 
         #[test]
         fn test_set_get_expired_multiple_values() {
             let mut dataStore = DataStore::init(DbConfig::empty());
-            let mut data = DataUnit::new("value", Some(Duration::from_secs(10)));
+            let mut data = DataUnit::new("key", "value", Some(Expiry::Ttl(Duration::from_secs(10))));
             // Alter the data object after construction
-            data.expiry_deadline = Some(data.created - Duration::from_millis(10));
-            let data2 = DataUnit::new("value2".to_string(), Some(Duration::from_secs(0)));
+            data.expiry_deadline = Some(Instant::now());
+            let data2 = DataUnit::new("key", "value2", Some(Expiry::Ttl(Duration::from_secs(0))));
 
-            dataStore.set("key",data);
-            dataStore.set("key2",data2);
-            
-            assert!(dataStore.get(&"key".to_string()).is_none(), "Value should be expired!");
-            assert!(dataStore.get(&"key".to_string()).is_none(), "Value should be expired!");
-            assert!(dataStore.get(&"key2".to_string()).is_none(), "Value should be expired!");
+            dataStore.set("key", data);
+            dataStore.set("key2", data2);
+
+            assert!(
+                dataStore.get(&"key".to_string()).is_none(),
+                "Value should be expired!"
+            );
+            assert!(
+                dataStore.get(&"key".to_string()).is_none(),
+                "Value should be expired!"
+            );
+            assert!(
+                dataStore.get(&"key2".to_string()).is_none(),
+                "Value should be expired!"
+            );
 
             assert!(!dataStore.db.contains_key("key"));
             assert!(!dataStore.db.contains_key("key2"));
         }
     }
-
 
     #[cfg(test)]
     mod test_concurrency_data_store {
@@ -227,7 +301,7 @@ mod tests {
                 handles.push(thread::spawn(move || {
                     let key = format!("key{}", i);
                     let value = format!("value{}", i);
-                    store_clone.set(key, DataUnit::new(value, None));
+                    store_clone.set(&key, DataUnit::new(&key, &value, None));
                 }));
             }
 
@@ -253,7 +327,6 @@ mod tests {
         }
     }
 
-
     #[cfg(test)]
     mod test_data_unit {
         use std::{
@@ -266,25 +339,31 @@ mod tests {
         #[test]
         fn test_is_expired_no_expiry() {
             let data = DataUnit {
-                data: "data value".into(),
-                created: Instant::now(),
+                key: "key".into(),
+                value: "data value".into(),
                 expiry_deadline: None,
             };
 
-            assert!(!data.is_expired(), "Data with no expiry should never expire!");
+            assert!(
+                !data.is_expired(),
+                "Data with no expiry should never expire!"
+            );
         }
 
         #[test]
         fn test_is_expired_some_expiry() {
             let now = Instant::now();
             let mut data = DataUnit {
-                data: "data value".into(),
-                created: now,
+                key: "key".into(),
+                value: "data value".into(),
                 expiry_deadline: Some(now + Duration::from_millis(50)),
             };
             assert!(!data.is_expired(), "Data should not expire instantly!");
             data.expiry_deadline = Some(now - Duration::from_millis(1));
-            assert!(data.is_expired(), "Data should expire after the set durration!");
+            assert!(
+                data.is_expired(),
+                "Data should expire after the set durration!"
+            );
         }
     }
 }
