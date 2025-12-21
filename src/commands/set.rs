@@ -6,7 +6,7 @@ use log::{debug, trace};
 
 use crate::{
     commands::commands::Execute,
-    db::data_store::{get_db, DataUnit},
+    db::data_store::{DataUnit, Expiry, get_db},
     parser::messages::RedisMessageType,
 };
 
@@ -24,8 +24,8 @@ pub enum SetArguments {
     GET, // -- Return the old string stored at key, or nil if key did not exist. An error is returned and SET aborted if the value stored at key is not a string.
     EX(Duration), // seconds -- Set the specified expire time, in seconds (a positive integer).
     PX(Duration), // milliseconds -- Set the specified expire time, in milliseconds (a positive integer).
-    EXAT(Duration), // imestamp-seconds -- Set the specified Unix time at which the key will expire, in seconds (a positive integer).
-    PXAT(Duration), // imestamp-milliseconds -- Set the specified Unix time at which the key will expire, in milliseconds (a positive integer).
+    EXAT(SystemTime), // imestamp-seconds -- Set the specified Unix time at which the key will expire, in seconds (a positive integer).
+    PXAT(SystemTime), // imestamp-milliseconds -- Set the specified Unix time at which the key will expire, in milliseconds (a positive integer).
     KEEPTTL,        // -- Retain the time to live associated with the key.
 }
 
@@ -75,9 +75,9 @@ impl Execute for SetCommand {
 
         let expiry = arguments.iter().find(|arg| arg.is_expiry_argument()).map(|v| match v {
             SetArguments::EX(value)
-            | SetArguments::PX(value)
-            | SetArguments::EXAT(value)
-            | SetArguments::PXAT(value) => *value,
+            | SetArguments::PX(value) => Expiry::Ttl(*value),
+            SetArguments::EXAT(value)
+            | SetArguments::PXAT(value) => Expiry::Deadline(*value),
             SetArguments::KEEPTTL => unimplemented!("Needs impl"),
             _ => unreachable!(),
         });
@@ -96,7 +96,7 @@ impl Execute for SetCommand {
                         trace!("{}", error);
                         return RedisMessageType::error(error);
                     }
-                    get_db().set(key, DataUnit::new(save_value, expiry));
+                    get_db().set(key.clone(), DataUnit::new(key, save_value, expiry));
                 },
                 SetArguments::XX => {
                     if old_value.is_none() {
@@ -104,11 +104,11 @@ impl Execute for SetCommand {
                         trace!("{}", error);
                         return RedisMessageType::error(error);
                     }
-                    get_db().set(key, DataUnit::new(save_value, expiry));
+                    get_db().set(key.clone(), DataUnit::new(key, save_value, expiry));
                 },
                 _ => unreachable!(),
             },
-            None => get_db().set(key, DataUnit::new(save_value, expiry))
+            None => get_db().set(key.clone(), DataUnit::new(key, save_value, expiry))
         }
 
         
@@ -135,8 +135,8 @@ impl SetArguments {
             "GET" => Ok(SetArguments::GET),
             "EX" => Ok(SetArguments::EX(Duration::from_secs(0))),
             "PX" => Ok(SetArguments::PX(Duration::from_secs(0))),
-            "EXAT" => Ok(SetArguments::EXAT(Duration::from_secs(0))),
-            "PXAT" => Ok(SetArguments::PXAT(Duration::from_secs(0))),
+            "EXAT" => Ok(SetArguments::EXAT(SystemTime::now())),
+            "PXAT" => Ok(SetArguments::PXAT(SystemTime::now())),
             "KEEPTTL" => Ok(SetArguments::KEEPTTL),
             unknown_value => Err(RedisMessageType::error(format!(
                 "Unknown Set command argument: {}",
@@ -200,8 +200,8 @@ fn parse_arguments(args: &[RedisMessageType]) -> Result<Vec<SetArguments>, Redis
             argument = match argument {
                 SetArguments::EX(_val) => SetArguments::EX(Duration::from_secs(expiry_value)),
                 SetArguments::PX(_val) => SetArguments::PX(Duration::from_millis(expiry_value)),
-                SetArguments::EXAT(_val) => SetArguments::EXAT(expiry_from_unix_secs(expiry_value)),
-                SetArguments::PXAT(_val) => SetArguments::PXAT(expiry_from_unix_millis(expiry_value)),
+                SetArguments::EXAT(_val) => SetArguments::EXAT(UNIX_EPOCH + Duration::from_secs(expiry_value)),
+                SetArguments::PXAT(_val) => SetArguments::PXAT(UNIX_EPOCH + Duration::from_millis(expiry_value)),
                 val => val,
             };
 

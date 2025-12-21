@@ -38,7 +38,10 @@ pub struct DatabaseSubSection {
 pub struct EndOfFile {}
 
 use anyhow::{anyhow, Result};
+use dashmap::DashMap;
 use log::{error, info, trace};
+
+use crate::db::data_store::{get_db, DataUnit, Expiry};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct KeyValueDataUnit {
@@ -68,6 +71,10 @@ impl RdbFile {
             db,
             eof,
         });
+    }
+
+    pub fn get_database(&self) -> &Database {
+        return &self.db;
     }
 }
 
@@ -148,10 +155,14 @@ impl Database {
         let mut index = 0;
 
         let mut subsections: Vec<DatabaseSubSection> = Vec::new();
-        while s.get(index).ok_or(anyhow!("err missing bytes to parse data base section"))? == &0xFE {
-            let data = s.get(index..).ok_or(
-                anyhow!("missing bytes for the database subsection parsing!")
-            )?;
+        while s
+            .get(index)
+            .ok_or(anyhow!("err missing bytes to parse data base section"))?
+            == &0xFE
+        {
+            let data = s.get(index..).ok_or(anyhow!(
+                "missing bytes for the database subsection parsing!"
+            ))?;
             let (subsection, parsed_length) = DatabaseSubSection::decode(data)?;
             subsections.push(subsection);
 
@@ -159,6 +170,27 @@ impl Database {
         }
 
         return Ok((Database { subsections }, index));
+    }
+
+    pub fn to_dashmap(&self) -> DashMap<String, DataUnit> {
+        let mut map: DashMap<String, DataUnit> = DashMap::with_capacity(
+            self.subsections
+                .iter()
+                .map(|v| v.key_value_data_units.len())
+                .sum(),
+        );
+
+        self.subsections.iter().for_each(|database_sub_section| {
+            database_sub_section
+                .key_value_data_units
+                .iter()
+                .for_each(|key_value_data_unit| {
+                    let data_unit = key_value_data_unit.to_data_unit();
+                    map.insert(data_unit.key.clone(), data_unit);
+                });
+        });
+
+        return map;
     }
 }
 
@@ -168,9 +200,8 @@ impl DatabaseSubSection {
 
         let raw = input.as_ref();
         let mut key_value_data_units = Vec::with_capacity(header.hash_table_size);
-        println!("no key value data!");
+
         for _ in 0..header.hash_table_size {
-            println!("should never be printed!");
             let (data_unit, data_unit_bytes_parsed) = KeyValueDataUnit::decode(
                 &raw.get(bytes_parsed..)
                     .ok_or(anyhow!("Requires bytes for data Unit parsing!"))?,
@@ -211,7 +242,6 @@ impl DatabaseSubSectionHeader {
             ));
         }
 
-        trace!("header bytes{:?}", &bytes);
         let (index, index_parsed_bytes) = parse_length_encoding(&bytes[1..])
             .ok_or(anyhow!("Expected valid value for db subsection index!"))?;
 
@@ -223,7 +253,7 @@ impl DatabaseSubSectionHeader {
 
         if *bytes.get(index_parsed_bytes + 1).ok_or(anyhow!("arr"))? != 0xFB as u8 {
             return Err(anyhow!(
-                "Expected to have a key to indecate hash tabel size info follows!"
+                "Expected to have a key to indecate hash table size!"
             ));
         }
 
@@ -323,6 +353,14 @@ impl KeyValueDataUnit {
 
         return Ok((key_value_data_unit, index));
     }
+
+    fn to_data_unit(&self) -> DataUnit {
+        return DataUnit::new(
+            self.key.clone(),
+            self.value.clone(),
+            self.expiry.map(|v| Expiry::Deadline(v)),
+        );
+    }
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -386,6 +424,32 @@ fn parse_length_encoding(buf: &[u8]) -> Option<(usize, usize)> {
 
 #[cfg(test)]
 mod test {
+
+    #[cfg(test)]
+    mod test_rdb_file {
+
+        use crate::db::db_file::RdbFile;
+
+        #[test]
+        fn test_load_full_rdb_file() {
+            let input = vec![
+                // header bytes
+                0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31, // metadata bytes
+                0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x06, 0x36, 0x2E,
+                0x30, 0x2E, 0x31, 0x36, // database bytes
+                0xFE, 0x00, 0xFB, 0x02, 0x01, // key 1
+                0x00, 0x06, 0x66, 0x6F, 0x6F, 0x62, 0x61, 0x72, // value type 1
+                0x06, // value 1
+                0x62, 0x61, 0x7A, 0x71, 0x75, 0x78, // expiry timestamp in seconds
+                0xFD, 0x52, 0xED, 0x2A, 0x66, // value type 2
+                0x00, // key 2
+                0x03, 0x62, 0x61, 0x7A, // value 2
+                0x03, 0x71, 0x75, 0x78, 0x00,
+            ];
+
+            let result = RdbFile::decode(input).unwrap();
+        }
+    }
 
     #[cfg(test)]
     mod test_parse_length {
@@ -452,6 +516,21 @@ mod test {
     }
 
     #[cfg(test)]
+    mod test_header {
+        use crate::db::db_file::Header;
+
+        #[test]
+        fn test_decode_header() {
+            let header = vec![0x52, 0x45, 0x44, 0x49, 0x53, 0x30, 0x30, 0x31, 0x31];
+
+            let header = Header::decode(header).unwrap();
+
+            assert_eq!([0x52, 0x45, 0x44, 0x49, 0x53], header.magic_string);
+            assert_eq!([0x30, 0x30, 0x31, 0x31], header.version)
+        }
+    }
+
+    #[cfg(test)]
     mod test_metadata {
 
         use std::collections::HashMap;
@@ -459,10 +538,10 @@ mod test {
         use crate::db::db_file::Metadata;
 
         #[test]
-        fn test_parse_success() {
+        fn test_metadata_decode() {
             let data = vec![
                 0xFA, 0x09, 0x72, 0x65, 0x64, 0x69, 0x73, 0x2D, 0x76, 0x65, 0x72, 0x06, 0x36, 0x2E,
-                0x30, 0x2E, 0x31, 0x36, 0xFE, 0xDE, 0xAD, 0xBE, 0xEF,
+                0x30, 0x2E, 0x31, 0x36, 0xFE, 0xDE, 0xAD, 0xBE, 0xEF, 0x00,
             ];
 
             let mut map = HashMap::new();
@@ -501,7 +580,9 @@ mod test {
         #[test]
         fn test_parse_database_no_key_value_data_but_two_subsections() {
             // padding needed at the end of thisvec
-            let hex_value: Vec<u8> = vec![0xFE, 0x00, 0xFB, 0x00, 0x00, 0xFE, 0x01, 0xFB, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF];
+            let hex_value: Vec<u8> = vec![
+                0xFE, 0x00, 0xFB, 0x00, 0x00, 0xFE, 0x01, 0xFB, 0x00, 0x00, 0xDE, 0xAD, 0xBE, 0xEF,
+            ];
 
             let (database, parsed_bytes) = Database::decode(hex_value).unwrap();
 

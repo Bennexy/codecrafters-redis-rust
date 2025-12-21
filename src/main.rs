@@ -1,7 +1,7 @@
 #![allow(warnings)]
 
 use core::str;
-use log::{error, info, trace};
+use log::{debug, error, info, trace};
 use std::{
     io::{self, ErrorKind, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
@@ -84,7 +84,7 @@ fn recieve_message(mut stream: TcpStream) {
 
         let message_input =
             str::from_utf8(&raw_message).expect("Unable to parse input bytestream to str utf8");
-        trace!("Message recieved: {}", generate_hex_log(&raw_message));
+        debug!("Message recieved: {:?}", generate_hex_log(&raw_message));
         let command = RedisMessageType::decode(message_input)
             .expect("unable to parse RedisMessageType from input byte stream")
             .0;
