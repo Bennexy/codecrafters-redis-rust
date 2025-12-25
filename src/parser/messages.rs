@@ -41,14 +41,14 @@ impl RedisMessageType {
             Self::Array(data) => format!("*{}{CRLF}{}", data.len(), encode_array_elements(data)),
         }
     }
-    
+
     pub fn decode<T: AsRef<str>>(input: T) -> RedisDecodeResult {
         // let s = std::str::from_utf8(&input)?;
         let s = input.as_ref();
 
         let first_char = match s.chars().nth(0) {
             Some(val) => val,
-            None => return Err(anyhow!("Redis message does not contain any chars!"))
+            None => return Err(anyhow!("Redis message does not contain any chars!")),
         };
 
         match first_char {
@@ -69,7 +69,6 @@ impl RedisMessageType {
             Self::NullBulkString => None,
             Self::Integer(data) => Some(data.to_string()),
             Self::Array(_) => None,
-
         }
     }
 
@@ -90,7 +89,10 @@ impl RedisMessageType {
     pub fn bulk_string_value(&self) -> Result<String, RedisMessageType> {
         return match self {
             Self::BulkString(val) => Ok(val.clone()),
-            _ => Err(Self::error(format!("Expected BulkString not {}", self.message_type())))
+            _ => Err(Self::error(format!(
+                "Expected BulkString not {}",
+                self.message_type()
+            ))),
         };
     }
 
@@ -101,18 +103,23 @@ impl RedisMessageType {
             Self::Array(_) => "Array",
             Self::BulkString(_) => "BulkString",
             Self::NullBulkString => "NullBulkString",
-            Self::Integer(_) => "Integer"
+            Self::Integer(_) => "Integer",
         };
     }
 }
 
 fn encode_array_elements(data: &VecDeque<RedisMessageType>) -> String {
-    return data.iter().map(|message| message.encode()).collect::<Vec<String>>().concat();
+    return data
+        .iter()
+        .map(|message| message.encode())
+        .collect::<Vec<String>>()
+        .concat();
 }
 
 fn parse_simple_string(s: &str) -> RedisDecodeResult {
-    
-    let (value, _) = s[1..].split_once(CRLF).expect("Simple string must end on a CRLF");
+    let (value, _) = s[1..]
+        .split_once(CRLF)
+        .expect("Simple string must end on a CRLF");
 
     let string = value.to_string();
 
@@ -120,8 +127,9 @@ fn parse_simple_string(s: &str) -> RedisDecodeResult {
 }
 
 fn parse_error_string(s: &str) -> RedisDecodeResult {
-    
-    let (value, _) = s[1..].split_once(CRLF).expect("Error string must end on a CRLF");
+    let (value, _) = s[1..]
+        .split_once(CRLF)
+        .expect("Error string must end on a CRLF");
 
     let string = value.to_string();
 
@@ -145,12 +153,14 @@ fn parse_bulk_string(s: &str) -> RedisDecodeResult {
 
     let string = value[0..length].to_string();
 
-    return Ok((RedisMessageType::BulkString(string), length_str.len() + 3 + length + 2));
+    return Ok((
+        RedisMessageType::BulkString(string),
+        length_str.len() + 3 + length + 2,
+    ));
 }
 
 fn parse_integer(s: &str) -> RedisDecodeResult {
     // let s = std::str::from_utf8(&input)?;
-
 
     let (value_str, _) = s[1..]
         .split_once(CRLF)
@@ -162,9 +172,9 @@ fn parse_integer(s: &str) -> RedisDecodeResult {
 }
 
 fn parse_array(s: &str) -> RedisDecodeResult {
-
-    let (length_str, mut value) = s.split_once(CRLF)
-    .expect("Malformed Array. Expected length and data element split by CRLF.");
+    let (length_str, mut value) = s
+        .split_once(CRLF)
+        .expect("Malformed Array. Expected length and data element split by CRLF.");
 
     let length = usize::from_str_radix(&length_str[1..], 10)?;
 
@@ -178,7 +188,10 @@ fn parse_array(s: &str) -> RedisDecodeResult {
         array.push_back(message_type.0);
     }
 
-    return Ok((RedisMessageType::Array(array), length_str.len() + 3 + all_value_length));
+    return Ok((
+        RedisMessageType::Array(array),
+        length_str.len() + 3 + all_value_length,
+    ));
 }
 
 mod parse_utils {
@@ -311,7 +324,6 @@ mod test {
 
         #[test]
         fn decode_valid_string_positive_unsigned() {
-
             let expected = RedisMessageType::Integer(13);
             let input = ":13\r\n";
 
@@ -322,7 +334,6 @@ mod test {
 
         #[test]
         fn decode_valid_string_negative() {
-
             let expected = RedisMessageType::Integer(-23);
             let input = ":-23\r\n";
 
@@ -364,14 +375,17 @@ mod test {
 
         #[test]
         fn decode_valid_multivalue_string() {
-            let expected = RedisMessageType::Array(vec![
-                RedisMessageType::Integer(123),
-                RedisMessageType::Integer(-23),
-                RedisMessageType::SimpleString("asdf test me here!".into()),
-                RedisMessageType::BulkString("Imma test\r\ner here!".into()),
-            ].into());
-            let input = "*4\r\n:123\r\n:-23\r\n+asdf test me here!\r\n$19\r\nImma test\r\ner here!\r\n";
-        
+            let expected = RedisMessageType::Array(
+                vec![
+                    RedisMessageType::Integer(123),
+                    RedisMessageType::Integer(-23),
+                    RedisMessageType::SimpleString("asdf test me here!".into()),
+                    RedisMessageType::BulkString("Imma test\r\ner here!".into()),
+                ]
+                .into(),
+            );
+            let input =
+                "*4\r\n:123\r\n:-23\r\n+asdf test me here!\r\n$19\r\nImma test\r\ner here!\r\n";
 
             // let expected = RedisMessageType::Array(vec![
             //     RedisMessageType::Integer(123),
@@ -382,6 +396,5 @@ mod test {
             let result = RedisMessageType::decode(input).unwrap();
             assert_eq!(expected, result.0);
         }
-
     }
 }

@@ -23,7 +23,7 @@ impl ArgErrorMessageGenerator<PingCommand> for PingCommand {}
 impl Parse for PingCommand {
     fn parse(args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
         if !args.is_empty() {
-            return Err(Self::arg_count_error())
+            return Err(Self::arg_count_error());
         }
         return Ok(PingCommand::new());
     }

@@ -2,7 +2,6 @@ use std::collections::VecDeque;
 
 use crate::parser::messages::RedisMessageType;
 
-
 pub struct Unparsed;
 pub struct Parsed;
 
@@ -90,7 +89,8 @@ where
     fn sub_arg_count_error(key: String) -> RedisMessageType {
         RedisMessageType::error(format!(
             "ERR wrong number of arguments for '{}|{}' command",
-            P::command_name(), key
+            P::command_name(),
+            key
         ))
     }
 }

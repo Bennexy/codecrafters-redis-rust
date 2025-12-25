@@ -1,5 +1,5 @@
 use std::{
-    fs::{self, File},
+    fs::{self},
     net::{IpAddr, Ipv4Addr},
     path::{Path, PathBuf},
     str::FromStr,

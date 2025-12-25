@@ -26,7 +26,8 @@ impl Worker {
                 job();
 
                 trace!("Worker {id} completed job; Giving worker back into pool.")
-            }).expect(format!("Failed to spawn thread: worker-{id}").as_str());
+            })
+            .expect(format!("Failed to spawn thread: worker-{id}").as_str());
 
         Self { id, thread }
     }

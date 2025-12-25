@@ -1,4 +1,3 @@
-
 #[macro_export]
 macro_rules! redis_commands {
     ($($name:ident => $cmd:ty),+ $(,)?) => {

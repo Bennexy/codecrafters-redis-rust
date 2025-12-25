@@ -1,10 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    commands::{
-        echo,
-        traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
-    },
+    commands::traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
     parser::messages::RedisMessageType,
 };
 
@@ -12,7 +9,7 @@ pub struct ReplConfCommand;
 
 impl ReplConfCommand {
     fn new() -> Self {
-        return Self { };
+        return Self {};
     }
 }
 
@@ -25,7 +22,7 @@ impl CommandName for ReplConfCommand {
 impl ArgErrorMessageGenerator<ReplConfCommand> for ReplConfCommand {}
 
 impl Parse for ReplConfCommand {
-    fn parse(mut args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
+    fn parse(_args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
         return Ok(Self::new());
     }
 }

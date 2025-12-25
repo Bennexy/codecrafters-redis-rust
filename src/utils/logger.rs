@@ -1,8 +1,8 @@
-use std::io::Write;
 use ansi_term::Colour;
+use chrono::Local;
 use env_logger::Builder;
 use log::Level;
-use chrono::Local;
+use std::io::Write;
 
 use crate::utils::cli::Args;
 
@@ -12,8 +12,8 @@ pub fn set_log_level(args: &Args) {
         .format(|buf, record| {
             let level = match record.level() {
                 Level::Error => Colour::Red.paint("ERROR"),
-                Level::Warn  => Colour::Yellow.paint("WARN"),
-                Level::Info  => Colour::Green.paint("INFO"),
+                Level::Warn => Colour::Yellow.paint("WARN"),
+                Level::Info => Colour::Green.paint("INFO"),
                 Level::Debug => Colour::Blue.paint("DEBUG"),
                 Level::Trace => Colour::Purple.paint("TRACE"),
             };
@@ -33,9 +33,9 @@ pub fn set_log_level(args: &Args) {
         .init();
 }
 
-
 pub fn generate_hex_log<B: AsRef<[u8]>>(bytes: B) -> String {
-    bytes.as_ref()
+    bytes
+        .as_ref()
         .iter()
         .map(|b| {
             if b.is_ascii_graphic() || *b == b' ' {

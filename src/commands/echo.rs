@@ -1,10 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    commands::{
-        echo,
-        traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
-    },
+    commands::traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
     parser::messages::RedisMessageType,
 };
 

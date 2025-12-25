@@ -1,10 +1,9 @@
 use std::collections::VecDeque;
 
 use crate::{
-    commands::{
-        echo,
-        traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
-    }, db::data_store::get_db, parser::messages::RedisMessageType
+    commands::traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
+    db::data_store::get_db,
+    parser::messages::RedisMessageType,
 };
 
 pub struct GetCommand {
@@ -39,7 +38,7 @@ impl Execute for GetCommand {
     fn execute(self) -> Result<RedisMessageType, RedisMessageType> {
         let response = match get_db().get(self.key) {
             None => RedisMessageType::NullBulkString,
-            Some(val) => RedisMessageType::bulk_string(val.value)
+            Some(val) => RedisMessageType::bulk_string(val.value),
         };
 
         return Ok(response);

@@ -1,7 +1,6 @@
 use rand::Rng;
 use std::{
     fs,
-    net::IpAddr,
     path::PathBuf,
     sync::{Arc, RwLock},
     time::{Duration, Instant, SystemTime},
@@ -13,7 +12,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, info, trace};
 use once_cell::sync::OnceCell;
 
-use crate::db::db_file::{Database, RdbFile};
+use crate::db::db_file::RdbFile;
 
 const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 static DB: OnceCell<DataStore> = OnceCell::new();
@@ -79,7 +78,7 @@ impl ReplicationData {
     fn generate_master_repl_id() -> String {
         return (0..40)
             .map(|_| {
-                let idx = rand::rng().gen_range(0..CHARSET.len());
+                let idx = rand::rng().random_range(0..CHARSET.len());
                 CHARSET[idx] as char
             })
             .collect();
@@ -95,15 +94,6 @@ pub struct DbConfig {
 }
 
 impl DbConfig {
-    fn empty() -> Self {
-        return Self {
-            db_dir: PathBuf::new(),
-            db_filename: String::new(),
-            replication_data: ReplicationData::master(),
-            current_listening_port: 6379,
-        };
-    }
-
     pub fn new(
         db_dir: PathBuf,
         db_filename: String,
@@ -118,7 +108,7 @@ impl DbConfig {
             db_dir,
             db_filename,
             replication_data,
-            current_listening_port
+            current_listening_port,
         };
     }
 
@@ -145,7 +135,10 @@ impl DataStore {
     fn load_data_from_dbfile(db_config: &DbConfig) -> Result<DashMap<String, DataUnit>> {
         let path = db_config.get_full_db_file_path();
         if !path.is_file() {
-            anyhow!("DB file at path {:?} is missing or is empty!", path);
+            return Err(anyhow!(
+                "DB file at path {:?} is missing or is empty!",
+                path
+            ));
         }
         debug!("Loading db file");
         let raw_data: Vec<u8> = fs::read(path)?;
@@ -276,98 +269,102 @@ impl DataUnit {
 mod tests {
     // use super::*;
 
+    use std::path::PathBuf;
+
+    use crate::db::data_store::DbConfig;
+    fn empty_db_config() -> DbConfig {
+        return DbConfig::new(PathBuf::new(), "".into(), None, 1);
+    }
+
     #[cfg(test)]
     mod test_data_store {
 
-        use crate::db::data_store::{DataStore, DataUnit, DbConfig, Expiry};
-        use std::{
-            thread,
-            time::{Duration, Instant},
-        };
+        use crate::db::data_store::{tests::empty_db_config, DataStore, DataUnit, Expiry};
+        use std::time::{Duration, Instant};
 
         #[test]
         fn test_set_get_remove() {
-            let mut dataStore = DataStore::init(DbConfig::empty());
-            dataStore.set("key", DataUnit::new("key", "value", None));
+            let data_store = DataStore::init(empty_db_config());
+            data_store.set("key", DataUnit::new("key", "value", None));
 
             assert!(
-                dataStore.db.contains_key("key"),
+                data_store.db.contains_key("key"),
                 "DataStore must contain the key after setting it"
             );
             assert_eq!(
                 "value",
-                dataStore.get("key").unwrap().value,
+                data_store.get("key").unwrap().value,
                 "DataStore must have the correct value connected to the key"
             );
 
-            dataStore.set("key", DataUnit::new("key", "value2", None));
+            data_store.set("key", DataUnit::new("key", "value2", None));
             assert_eq!(
                 "value2",
-                dataStore.get("key").unwrap().value,
+                data_store.get("key").unwrap().value,
                 "DataStore must have the overridden value connected to the key"
             );
 
-            dataStore.remove_key("key");
+            data_store.remove_key("key");
             assert!(
-                !dataStore.db.contains_key("key"),
+                !data_store.db.contains_key("key"),
                 "DataStore must not contain the key after removing it"
             );
         }
 
         #[test]
         fn test_set_get_not_expired() {
-            let mut dataStore = DataStore::init(DbConfig::empty());
+            let data_store = DataStore::init(empty_db_config());
             let data = DataUnit::new("key", "value", Some(Expiry::Ttl(Duration::from_millis(10))));
-            dataStore.set("key", data);
+            data_store.set("key", data);
 
             assert_eq!(
                 "value",
-                dataStore.get("key").unwrap().value,
+                data_store.get("key").unwrap().value,
                 "Value should not expire instantly!"
             );
         }
 
         #[test]
         fn test_set_get_expired_multiple_values() {
-            let mut dataStore = DataStore::init(DbConfig::empty());
+            let data_store = DataStore::init(empty_db_config());
             let mut data =
                 DataUnit::new("key", "value", Some(Expiry::Ttl(Duration::from_secs(10))));
             // Alter the data object after construction
             data.expiry_deadline = Some(Instant::now());
             let data2 = DataUnit::new("key", "value2", Some(Expiry::Ttl(Duration::from_secs(0))));
 
-            dataStore.set("key", data);
-            dataStore.set("key2", data2);
+            data_store.set("key", data);
+            data_store.set("key2", data2);
 
             assert!(
-                dataStore.get(&"key".to_string()).is_none(),
+                data_store.get(&"key".to_string()).is_none(),
                 "Value should be expired!"
             );
             assert!(
-                dataStore.get(&"key".to_string()).is_none(),
+                data_store.get(&"key".to_string()).is_none(),
                 "Value should be expired!"
             );
             assert!(
-                dataStore.get(&"key2".to_string()).is_none(),
+                data_store.get(&"key2".to_string()).is_none(),
                 "Value should be expired!"
             );
 
-            assert!(!dataStore.db.contains_key("key"));
-            assert!(!dataStore.db.contains_key("key2"));
+            assert!(!data_store.db.contains_key("key"));
+            assert!(!data_store.db.contains_key("key2"));
         }
     }
 
     #[cfg(test)]
     mod test_concurrency_data_store {
-        use crate::db::data_store::{DataStore, DataUnit, DbConfig};
+        use crate::db::data_store::tests::empty_db_config;
+        use crate::db::data_store::{DataStore, DataUnit};
 
         use std::sync::Arc;
         use std::thread;
-        use std::time::Duration;
 
         #[test]
         fn test_concurrent_set_get() {
-            let store = Arc::new(DataStore::init(DbConfig::empty()));
+            let store = Arc::new(DataStore::init(empty_db_config()));
 
             // Spawn multiple writer threads
             let mut handles = Vec::new();
@@ -404,10 +401,7 @@ mod tests {
 
     #[cfg(test)]
     mod test_data_unit {
-        use std::{
-            thread,
-            time::{Duration, Instant},
-        };
+        use std::time::{Duration, Instant};
 
         use crate::db::data_store::DataUnit;
 

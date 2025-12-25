@@ -1,10 +1,7 @@
 use std::collections::VecDeque;
 
 use crate::{
-    commands::{
-        echo,
-        traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
-    },
+    commands::traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
     consts::LF,
     db::data_store::get_db,
     parser::messages::RedisMessageType,
@@ -28,7 +25,7 @@ impl CommandName for InfoCommand {
 impl ArgErrorMessageGenerator<InfoCommand> for InfoCommand {}
 
 impl Parse for InfoCommand {
-    fn parse(mut args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
+    fn parse(_args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
         return Ok(Self::new());
     }
 }

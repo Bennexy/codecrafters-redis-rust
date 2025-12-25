@@ -3,7 +3,6 @@
 use core::str;
 use log::{debug, error, info, trace};
 use std::{
-    collections::VecDeque,
     io::{self, ErrorKind, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     result::Result,
@@ -17,7 +16,7 @@ pub mod parser;
 pub mod utils;
 
 use crate::{
-    commands::{command::UnparsedCommandType, traits::Command},
+    commands::command::UnparsedCommandType,
     db::data_store::{get_db, init_db, ServerRole},
     parser::messages::RedisMessageType,
     utils::logger::generate_hex_log,
@@ -138,7 +137,7 @@ fn process_message(message: &str) -> Result<RedisMessageType, RedisMessageType> 
 
 fn connect_slave_to_master(master_host: String, master_port: u16) {
     info!("Starting slave to master connection");
-    let mut stream = TcpStream::connect(format!("{}:{}", master_host, master_port))
+    let stream = TcpStream::connect(format!("{}:{}", master_host, master_port))
         .expect("Failed to connect to master!");
 
     repl_handshake(stream);
@@ -238,5 +237,4 @@ fn repl_handshake(mut stream: TcpStream) {
         }
     }
     debug!("Handshake 2/3 Successfully completed. 2/2 REPLCONF responses recieved.");
-    
 }

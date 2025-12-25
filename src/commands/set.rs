@@ -6,10 +6,8 @@ use std::{
 use log::trace;
 
 use crate::{
-    commands::traits::{
-        ArgErrorMessageGenerator, CommandName, Execute, Parse, Parsed, StateItemType, Unparsed,
-    },
-    db::data_store::{DataUnit, Expiry, get_db},
+    commands::traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
+    db::data_store::{get_db, DataUnit, Expiry},
     parser::messages::RedisMessageType,
 };
 
@@ -156,7 +154,8 @@ impl Execute for SetCommand {
         let expiry = self.expiry_condition.and_then(|condition| match condition {
             ExpiryCondition::EX(dur) | ExpiryCondition::PX(dur) => Some(Expiry::Ttl(dur)),
             ExpiryCondition::EXAT(st) | ExpiryCondition::PXAT(st) => Some(Expiry::Deadline(st)),
-            ExpiryCondition::KEEPTTL => old_value.clone()
+            ExpiryCondition::KEEPTTL => old_value
+                .clone()
                 .and_then(|v| v.get_expiry_deadline())
                 .map(Expiry::Instant),
         });
@@ -173,7 +172,7 @@ impl Execute for SetCommand {
                         return Err(RedisMessageType::error(error));
                     }
                     get_db().set(self.key, data);
-                },
+                }
                 SetCondition::XX => {
                     if old_value.is_none() {
                         let error = format!("Not setting value for key: '{}' due to 'XX' argument (update only command) and non exsisting value.", self.key);
@@ -181,16 +180,16 @@ impl Execute for SetCommand {
                         return Err(RedisMessageType::error(error));
                     }
                     get_db().set(self.key, data);
-                },
-            }
+                }
+            },
         };
 
         if self.return_old_value {
-            return Ok(old_value.map(|v| RedisMessageType::bulk_string(v.value)).unwrap_or(RedisMessageType::NullBulkString));
+            return Ok(old_value
+                .map(|v| RedisMessageType::bulk_string(v.value))
+                .unwrap_or(RedisMessageType::NullBulkString));
         } else {
             return Ok(RedisMessageType::simple_string("OK"));
         }
-
-
     }
 }

@@ -1,7 +1,5 @@
 use std::collections::VecDeque;
 
-use anyhow::anyhow;
-
 use crate::{
     commands::traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
     db::data_store::get_db,
@@ -44,7 +42,7 @@ impl ConfigCommand {
         return Self { action };
     }
 
-    fn parse_get_command(mut args: VecDeque<RedisMessageType>) -> Result<Action, RedisMessageType> {
+    fn parse_get_command(args: VecDeque<RedisMessageType>) -> Result<Action, RedisMessageType> {
         let mut items = Vec::with_capacity(args.len());
 
         for arg in args.iter() {
@@ -129,7 +127,10 @@ impl ConfigCommand {
         return Ok(RedisMessageType::Array(result));
     }
 
-    fn execute_set(item: ConfigItem, value: String) -> Result<RedisMessageType, RedisMessageType> {
+    fn _execute_set(
+        _item: ConfigItem,
+        _value: String,
+    ) -> Result<RedisMessageType, RedisMessageType> {
         return Ok(RedisMessageType::NullBulkString);
     }
 }
