@@ -71,7 +71,7 @@ fn parse_get_command(args: VecDeque<RedisMessageType>) -> Result<Action, RedisMe
 fn parse_set_command(mut args: VecDeque<RedisMessageType>) -> Result<Action, RedisMessageType> {
     let arg = args
         .pop_front()
-        .ok_or_else(Self::arg_count_error)?
+        .ok_or_else(ConfigCommand::arg_count_error)?
         .bulk_string_value()?;
 
     let config_item = ConfigItem::try_from(arg).map_err(|err| {
@@ -83,7 +83,7 @@ fn parse_set_command(mut args: VecDeque<RedisMessageType>) -> Result<Action, Red
 
     let value = args
         .pop_front()
-        .ok_or_else(Self::arg_count_error)?
+        .ok_or_else(ConfigCommand::arg_count_error)?
         .bulk_string_value()?;
 
     if !args.is_empty() {
@@ -94,7 +94,6 @@ fn parse_set_command(mut args: VecDeque<RedisMessageType>) -> Result<Action, Red
 
     return Ok(Action::Set((config_item, value)));
 }
-
 
 impl Parse for ConfigCommand {
     fn parse(mut args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
@@ -120,7 +119,6 @@ impl Parse for ConfigCommand {
         return Ok(Self::new(action));
     }
 }
-
 
 fn execute_help() -> RedisMessageType {
     return RedisMessageType::bulk_string_array(vec![
@@ -157,10 +155,7 @@ fn execute_get(items: Vec<ConfigItem>) -> Result<RedisMessageType, RedisMessageT
     return Ok(RedisMessageType::Array(result));
 }
 
-fn _execute_set(
-    _item: ConfigItem,
-    _value: String,
-) -> Result<RedisMessageType, RedisMessageType> {
+fn _execute_set(_item: ConfigItem, _value: String) -> Result<RedisMessageType, RedisMessageType> {
     return Ok(RedisMessageType::NullBulkString);
 }
 
