@@ -17,8 +17,8 @@ pub mod parser;
 pub mod utils;
 
 use crate::{
-    commands::{command::{UnparsedCommandType}, traits::Command},
-    db::data_store::init_db,
+    commands::{command::UnparsedCommandType, traits::Command},
+    db::data_store::{get_db, init_db, ServerRole},
     parser::messages::RedisMessageType,
     utils::logger::generate_hex_log,
 };
@@ -29,6 +29,13 @@ fn main() {
 
     let server_address = SocketAddr::new(args.host, args.port);
     let pool = ThreadPool::new(args.threads.into());
+
+    match get_db().get_config().replication_data.role {
+        ServerRole::Master => (),
+        ServerRole::Slave((host, port)) => {
+            pool.execute(move || connect_slave_to_master(host, port))
+        }
+    }
 
     info!(
         "Starting server with {} threads on ip: {} and port: {}",
@@ -127,4 +134,37 @@ fn process_message(message: &str) -> Result<RedisMessageType, RedisMessageType> 
     };
 
     return command.parse()?.execute();
+}
+
+fn connect_slave_to_master(master_host: String, master_port: u16) {
+    info!("Starting slave to master connection");
+    let mut stream = TcpStream::connect(format!("{}:{}", master_host, master_port))
+        .expect("Failed to connect to master!");
+
+    repl_handshake(stream);
+}
+
+fn repl_handshake(mut stream: TcpStream) {
+    debug!("Handshake 1/3 Sending ping to master server");
+    let ping = RedisMessageType::Array(vec![RedisMessageType::bulk_string("PING")].into());
+    stream
+        .write_all(ping.encode().as_bytes())
+        .expect("Failed to write to stream. Should never happen!");
+
+    let message = read_message(&mut stream).unwrap();
+    let message_input =
+        str::from_utf8(&message).expect("Unable to parse input bytestream to str utf8");
+    let parsed_message = RedisMessageType::decode(message_input)
+        .expect("unable to parse RedisMessageType from input byte stream")
+        .0;
+
+    match parsed_message {
+        RedisMessageType::SimpleString(val) => {
+            if val != "PONG" {
+                panic!("Expected a \"PONG\" response from the master server")
+            }
+        }
+        _ => panic!("Expected a \"PONG\" response from the master server"),
+    };
+    debug!("Handshake 1/3 Successfully completed. PONG response recieved.")
 }

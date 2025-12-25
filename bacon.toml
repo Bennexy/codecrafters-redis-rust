@@ -21,6 +21,18 @@ need_stdout = true
 allow_warnings = true
 background = true
 
+
+[jobs.run_slave]
+# command = ["cargo", "run", "--color", "always", "--", "--log-level", "trace"]
+command = ["./your_program.sh", "--log-level", "trace", "--replicaof", "\"localhost 6379\"", "--port", "6380"]
+env = { RUST_LOG_STYLE = "always", CARGO_TERM_COLOR = "always" }
+watch = ["src"]
+tty = true
+need_stdout = true
+allow_warnings = true
+background = true
+
+
 # Run clippy on all targets
 # To disable some lints, you may change the job this way:
 #    [jobs.clippy-all]

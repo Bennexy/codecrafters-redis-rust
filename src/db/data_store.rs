@@ -58,7 +58,7 @@ pub struct ReplicationData {
 }
 
 impl ReplicationData {
-    fn server() -> Self {
+    fn master() -> Self {
         return Self::new(ServerRole::Master);
     }
 
@@ -98,7 +98,7 @@ impl DbConfig {
         return Self {
             db_dir: PathBuf::new(),
             db_filename: String::new(),
-            replication_data: ReplicationData::server(),
+            replication_data: ReplicationData::master(),
         };
     }
 
@@ -108,7 +108,7 @@ impl DbConfig {
         replica_connection: Option<(String, u16)>,
     ) -> Self {
         let replication_data = match replica_connection {
-            None => ReplicationData::server(),
+            None => ReplicationData::master(),
             Some((host, port)) => ReplicationData::slave(host, port),
         };
         return Self {
