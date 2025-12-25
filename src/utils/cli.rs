@@ -101,6 +101,7 @@ impl Args {
                     let raw_replica_data = args
                         .next()
                         .expect("Redis Replication arg must be specified")
+                        .replace("\"", "")
                         .split_once(" ")
                         .map(|(a, b)| (a.to_owned(), b.to_owned()))
                         .expect("Redis Replication arg must follow the specified format");
