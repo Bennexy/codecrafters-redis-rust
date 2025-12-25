@@ -91,6 +91,7 @@ pub struct DbConfig {
     pub db_dir: PathBuf,
     pub db_filename: String,
     pub replication_data: ReplicationData,
+    pub current_listening_port: u16,
 }
 
 impl DbConfig {
@@ -99,6 +100,7 @@ impl DbConfig {
             db_dir: PathBuf::new(),
             db_filename: String::new(),
             replication_data: ReplicationData::master(),
+            current_listening_port: 6379,
         };
     }
 
@@ -106,6 +108,7 @@ impl DbConfig {
         db_dir: PathBuf,
         db_filename: String,
         replica_connection: Option<(String, u16)>,
+        current_listening_port: u16,
     ) -> Self {
         let replication_data = match replica_connection {
             None => ReplicationData::master(),
@@ -115,6 +118,7 @@ impl DbConfig {
             db_dir,
             db_filename,
             replication_data,
+            current_listening_port
         };
     }
 

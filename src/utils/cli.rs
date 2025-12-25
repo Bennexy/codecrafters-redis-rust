@@ -138,6 +138,7 @@ impl Args {
             self.db_dir.clone(),
             self.db_filename.clone(),
             self.replica_connection.clone(),
+            self.port.clone(),
         );
     }
 }

@@ -8,3 +8,4 @@ pub mod echo;
 pub mod config;
 pub mod keys;
 pub mod info;
+pub mod replconf;

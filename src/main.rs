@@ -145,26 +145,98 @@ fn connect_slave_to_master(master_host: String, master_port: u16) {
 }
 
 fn repl_handshake(mut stream: TcpStream) {
-    debug!("Handshake 1/3 Sending ping to master server");
-    let ping = RedisMessageType::Array(vec![RedisMessageType::bulk_string("PING")].into());
-    stream
-        .write_all(ping.encode().as_bytes())
-        .expect("Failed to write to stream. Should never happen!");
+    debug!("Handshake 1/3 Sending ping to master");
+    {
+        let ping = RedisMessageType::Array(vec![RedisMessageType::bulk_string("PING")].into());
+        stream
+            .write_all(ping.encode().as_bytes())
+            .expect("Failed to write to stream. Should never happen!");
 
-    let message = read_message(&mut stream).unwrap();
-    let message_input =
-        str::from_utf8(&message).expect("Unable to parse input bytestream to str utf8");
-    let parsed_message = RedisMessageType::decode(message_input)
-        .expect("unable to parse RedisMessageType from input byte stream")
-        .0;
+        let message = read_message(&mut stream).unwrap();
+        let message_input =
+            str::from_utf8(&message).expect("Unable to parse input bytestream to str utf8");
+        let parsed_message = RedisMessageType::decode(message_input)
+            .expect("unable to parse RedisMessageType from input byte stream")
+            .0;
 
-    match parsed_message {
-        RedisMessageType::SimpleString(val) => {
-            if val != "PONG" {
-                panic!("Expected a \"PONG\" response from the master server")
+        match parsed_message {
+            RedisMessageType::SimpleString(val) => {
+                if val != "PONG" {
+                    panic!("Expected a \"PONG\" response from the master server")
+                }
             }
+            _ => panic!("Expected a \"PONG\" response from the master server"),
+        };
+    }
+    debug!("Handshake 1/3 Successfully completed. PONG response recieved.");
+
+    debug!("Handshake 2/3 Sending replconf to master");
+    {
+        trace!("Sending replconf 1/2 listenport to master");
+        {
+            let listen_port = get_db().get_config().current_listening_port;
+            let replconf = RedisMessageType::Array(
+                vec![
+                    RedisMessageType::bulk_string("REPLCONF"),
+                    RedisMessageType::bulk_string("listening-port"),
+                    RedisMessageType::bulk_string(format!("{}", listen_port)),
+                ]
+                .into(),
+            );
+
+            stream
+                .write_all(replconf.encode().as_bytes())
+                .expect("Failed to write to stream. Should never happen!");
+
+            let message = read_message(&mut stream).unwrap();
+            let message_input =
+                str::from_utf8(&message).expect("Unable to parse input bytestream to str utf8");
+            let parsed_message = RedisMessageType::decode(message_input)
+                .expect("unable to parse RedisMessageType from input byte stream")
+                .0;
+
+            match parsed_message {
+                RedisMessageType::SimpleString(val) => {
+                    if val != "OK" {
+                        panic!("Expected a \"OK\" response from the master server")
+                    }
+                }
+                _ => panic!("Expected a \"OK\" response from the master server"),
+            };
         }
-        _ => panic!("Expected a \"PONG\" response from the master server"),
-    };
-    debug!("Handshake 1/3 Successfully completed. PONG response recieved.")
+        trace!("Sending replconf 2/2 capa to master");
+        {
+            let listen_port = get_db().get_config().current_listening_port;
+            let replconf = RedisMessageType::Array(
+                vec![
+                    RedisMessageType::bulk_string("REPLCONF"),
+                    RedisMessageType::bulk_string("capa"),
+                    RedisMessageType::bulk_string("psync2"),
+                ]
+                .into(),
+            );
+
+            stream
+                .write_all(replconf.encode().as_bytes())
+                .expect("Failed to write to stream. Should never happen!");
+
+            let message = read_message(&mut stream).unwrap();
+            let message_input =
+                str::from_utf8(&message).expect("Unable to parse input bytestream to str utf8");
+            let parsed_message = RedisMessageType::decode(message_input)
+                .expect("unable to parse RedisMessageType from input byte stream")
+                .0;
+
+            match parsed_message {
+                RedisMessageType::SimpleString(val) => {
+                    if val != "OK" {
+                        panic!("Expected a \"OK\" response from the master server")
+                    }
+                }
+                _ => panic!("Expected a \"OK\" response from the master server"),
+            };
+        }
+    }
+    debug!("Handshake 2/3 Successfully completed. 2/2 REPLCONF responses recieved.");
+    
 }
