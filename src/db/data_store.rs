@@ -1,15 +1,21 @@
+use rand::Rng;
 use std::{
-    fs, net::IpAddr, path::PathBuf, sync::{Arc, RwLock}, time::{Duration, Instant, SystemTime}
+    fs,
+    net::IpAddr,
+    path::PathBuf,
+    sync::{Arc, RwLock},
+    time::{Duration, Instant, SystemTime},
 };
 
 use dashmap::DashMap;
 
+use anyhow::{anyhow, Result};
 use log::{debug, info, trace};
 use once_cell::sync::OnceCell;
-use anyhow::{Result, anyhow};
 
 use crate::db::db_file::{Database, RdbFile};
 
+const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 static DB: OnceCell<DataStore> = OnceCell::new();
 pub fn get_db() -> &'static DataStore {
     return DB
@@ -24,7 +30,6 @@ pub fn init_db(db_config: DbConfig) {
 
     trace!("Config has been initialized!")
 }
-
 
 #[derive(Debug, Clone)]
 pub enum ServerRole {
@@ -41,26 +46,43 @@ impl ServerRole {
     }
 }
 
-
 #[derive(Debug, Clone)]
 pub struct ReplicationData {
     pub role: ServerRole,
     // connected_slaves: u32,
-    // master_repl_id: String,
-    // master_repl_offset: u32,
+    pub master_repl_id: String,
+    pub master_repl_offset: u128,
     // second_repl_offset: i32,
     // repl_backlog_active: u32,
     // repl_backlog_size: u32
-
 }
 
 impl ReplicationData {
     fn server() -> Self {
-        return Self { role: ServerRole::Master }
+        return Self::new(ServerRole::Master);
     }
 
     fn slave(host: String, port: u16) -> Self {
-        return Self { role: ServerRole::Slave((host, port))};
+        return Self::new(ServerRole::Slave((host, port)));
+    }
+
+    fn new(role: ServerRole) -> Self {
+        let master_repl_id = Self::generate_master_repl_id();
+
+        return Self {
+            role,
+            master_repl_id,
+            master_repl_offset: 0,
+        };
+    }
+
+    fn generate_master_repl_id() -> String {
+        return (0..40)
+            .map(|_| {
+                let idx = rand::rng().gen_range(0..CHARSET.len());
+                CHARSET[idx] as char
+            })
+            .collect();
     }
 }
 
@@ -76,11 +98,15 @@ impl DbConfig {
         return Self {
             db_dir: PathBuf::new(),
             db_filename: String::new(),
-            replication_data: ReplicationData::server()
+            replication_data: ReplicationData::server(),
         };
     }
 
-    pub fn new(db_dir: PathBuf, db_filename: String, replica_connection: Option<(String, u16)>) -> Self {
+    pub fn new(
+        db_dir: PathBuf,
+        db_filename: String,
+        replica_connection: Option<(String, u16)>,
+    ) -> Self {
         let replication_data = match replica_connection {
             None => ReplicationData::server(),
             Some((host, port)) => ReplicationData::slave(host, port),
@@ -88,7 +114,7 @@ impl DbConfig {
         return Self {
             db_dir,
             db_filename,
-            replication_data
+            replication_data,
         };
     }
 
@@ -105,7 +131,6 @@ pub struct DataStore {
 
 impl DataStore {
     fn init(db_config: DbConfig) -> Self {
-
         let map = Self::load_data_from_dbfile(&db_config).unwrap_or(DashMap::new());
         return Self {
             db: Arc::new(map),
@@ -114,7 +139,6 @@ impl DataStore {
     }
 
     fn load_data_from_dbfile(db_config: &DbConfig) -> Result<DashMap<String, DataUnit>> {
-        
         let path = db_config.get_full_db_file_path();
         if !path.is_file() {
             anyhow!("DB file at path {:?} is missing or is empty!", path);
@@ -126,16 +150,13 @@ impl DataStore {
         debug!("Parsed db file contents into memory");
         let dash_map = rdb_file.get_database().to_dashmap();
         info!("Successfully loaded db file contents into in memory database!");
-        return Ok(dash_map)
-
+        return Ok(dash_map);
     }
 
     pub fn get_all_keys(&self) -> Vec<String> {
-
-        let mut keys    = Vec::with_capacity(self.db.capacity());
+        let mut keys = Vec::with_capacity(self.db.capacity());
         for entry in self.db.iter() {
             keys.push(entry.key.clone());
-
         }
         keys.shrink_to_fit();
         return keys;
@@ -214,7 +235,7 @@ impl Expiry {
     fn get_expiry_deadline(&self) -> Instant {
         let now = Instant::now();
         return match self {
-            Self::Instant(instant) => *instant, 
+            Self::Instant(instant) => *instant,
             Self::Ttl(ttl) => now.checked_add(*ttl).unwrap_or(now),
             Self::Deadline(timespamp) => timespamp
                 .duration_since(SystemTime::now())
@@ -275,7 +296,7 @@ mod tests {
                 "DataStore must have the correct value connected to the key"
             );
 
-            dataStore.set("key", DataUnit::new("key","value2", None));
+            dataStore.set("key", DataUnit::new("key", "value2", None));
             assert_eq!(
                 "value2",
                 dataStore.get("key").unwrap().value,
@@ -292,7 +313,7 @@ mod tests {
         #[test]
         fn test_set_get_not_expired() {
             let mut dataStore = DataStore::init(DbConfig::empty());
-            let data = DataUnit::new("key","value", Some(Expiry::Ttl(Duration::from_millis(10))));
+            let data = DataUnit::new("key", "value", Some(Expiry::Ttl(Duration::from_millis(10))));
             dataStore.set("key", data);
 
             assert_eq!(
@@ -305,7 +326,8 @@ mod tests {
         #[test]
         fn test_set_get_expired_multiple_values() {
             let mut dataStore = DataStore::init(DbConfig::empty());
-            let mut data = DataUnit::new("key", "value", Some(Expiry::Ttl(Duration::from_secs(10))));
+            let mut data =
+                DataUnit::new("key", "value", Some(Expiry::Ttl(Duration::from_secs(10))));
             // Alter the data object after construction
             data.expiry_deadline = Some(Instant::now());
             let data2 = DataUnit::new("key", "value2", Some(Expiry::Ttl(Duration::from_secs(0))));

@@ -4,7 +4,10 @@ use crate::{
     commands::{
         echo,
         traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
-    }, db::data_store::get_db, parser::messages::RedisMessageType
+    },
+    consts::LF,
+    db::data_store::get_db,
+    parser::messages::RedisMessageType,
 };
 
 // no arg support needed
@@ -12,7 +15,7 @@ pub struct InfoCommand;
 
 impl InfoCommand {
     fn new() -> Self {
-        return Self ;
+        return Self;
     }
 }
 
@@ -32,9 +35,13 @@ impl Parse for InfoCommand {
 
 impl Execute for InfoCommand {
     fn execute(self) -> Result<RedisMessageType, RedisMessageType> {
-        let role = get_db().get_config().replication_data.role.name();
+        let repl_data = get_db().get_config().replication_data;
 
-
-        return Ok(RedisMessageType::BulkString(format!("role:{}", role)));
+        return Ok(RedisMessageType::BulkString(format!(
+            "role:{}{LF}master_replid:{}{LF}master_repl_offset:{}{LF}",
+            repl_data.role.name(),
+            repl_data.master_repl_id,
+            repl_data.master_repl_offset
+        )));
     }
 }
