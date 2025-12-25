@@ -1,5 +1,5 @@
 use std::{
-    fs, path::PathBuf, sync::{Arc, RwLock}, time::{Duration, Instant, SystemTime}
+    fs, net::IpAddr, path::PathBuf, sync::{Arc, RwLock}, time::{Duration, Instant, SystemTime}
 };
 
 use dashmap::DashMap;
@@ -29,14 +29,14 @@ pub fn init_db(db_config: DbConfig) {
 #[derive(Debug, Clone)]
 pub enum ServerRole {
     Master,
-    Slave,
+    Slave((IpAddr, u16)),
 }
 
 impl ServerRole {
     pub const fn name(&self) -> &'static str {
         return match self {
             Self::Master => "master",
-            Self::Slave => "slave",
+            Self::Slave(_) => "slave",
         };
     }
 }
@@ -58,6 +58,10 @@ impl ReplicationData {
     fn server() -> Self {
         return Self { role: ServerRole::Master }
     }
+
+    fn slave(ip: IpAddr, port: u16) -> Self {
+        return Self { role: ServerRole::Slave((ip, port))};
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -76,7 +80,11 @@ impl DbConfig {
         };
     }
 
-    pub fn new(db_dir: PathBuf, db_filename: String) -> Self {
+    pub fn new(db_dir: PathBuf, db_filename: String, replica_connection: Option<(IpAddr, u16)>) -> Self {
+        let replication_data = match replica_connection {
+            None => ReplicationData::server(),
+            Some((ip, port)) => ReplicationData::slave(ip, port),
+        };
         return Self {
             db_dir,
             db_filename,

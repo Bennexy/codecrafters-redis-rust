@@ -1,5 +1,8 @@
 use std::{
-    fs::{self, File}, net::{IpAddr, Ipv4Addr}, path::{Path, PathBuf}, str::FromStr
+    fs::{self, File},
+    net::{IpAddr, Ipv4Addr},
+    path::{Path, PathBuf},
+    str::FromStr,
 };
 
 use log::{trace, LevelFilter};
@@ -12,22 +15,28 @@ pub struct Args {
     pub threads: u8,
     pub log_level: LevelFilter,
     pub db_dir: PathBuf,
-    pub db_filename: String
+    pub db_filename: String,
+    pub replica_connection: Option<(IpAddr, u16)>,
 }
 
 impl Args {
     fn print_help() {
         println!("Usage: program_name [options]");
         println!("Options:");
-        println!("  --log-level level      Specifies the log-level (default: error)");
-        println!("                         Options: trace, debug, info, warn, error, off");
-        println!("  --host <hostname>      Specifies the host of the server (default: 127.0.0.1)");
-        println!("  --port <port_number>   Specifies the port of the server (default: 6379)");
-        println!("  --threads <num>        Specifies the number of threads of the server to run (default: 4)");
-        println!("  --replicaof <hostname> <port_number>");
-        println!("                         Specifies the host and port of the server to replicate (default: None)");
-        println!("  --dir <path>           Specifies the db dir (default: /tmp/redis-files)");
-        println!("  --dbfilename <file>    Specifies the filename where redis will save its data (default: redis.rdb)");
+        println!("  --log-level level               Specifies the log-level (default: error)");
+        println!("                                  Options: trace, debug, info, warn, error, off");
+        println!("  --host <hostname>               Specifies the host of the server (default: 127.0.0.1)");
+        println!(
+            "  --port <port_number>            Specifies the port of the server (default: 6379)"
+        );
+        println!("  --threads <num>                 Specifies the number of threads of the server to run (default: 4)");
+        println!("  --replicaof <hostname>          <port_number>");
+        println!("                                  Specifies the host and port of the server to replicate (default: None)");
+        println!(
+            "  --dir <path>                    Specifies the db dir (default: /tmp/redis-files)"
+        );
+        println!("  --dbfilename <file>             Specifies the filename where redis will save its data (default: redis.rdb)");
+        println!("  --replicaof \"<host> <port>\"   Specified the redis server to be a replica of (default none)")
     }
 
     pub fn parse() -> Args {
@@ -37,6 +46,7 @@ impl Args {
         let mut log_level = LevelFilter::Error;
         let mut db_dir = Path::new("/tmp/redis-files").to_path_buf();
         let mut db_filename = "redis.rdb".to_string();
+        let mut replica_connection = None;
 
         let mut args = std::env::args().skip(1);
         while let Some(arg) = args.next() {
@@ -83,12 +93,22 @@ impl Args {
                     if !db_dir.is_absolute() {
                         panic!("Given dir path must be absolut!")
                     }
-                },
+                }
                 "--dbfilename" => {
                     db_filename = args.next().expect("Redis file name must be specified");
+                }
+                "--replicaof" => {
+                    let raw_replica_data = args
+                        .next()
+                        .expect("Redis Replication arg must be specified")
+                        .split_once(" ")
+                        .map(|(a, b)| (a.to_owned(), b.to_owned()))
+                        .expect("Redis Replication arg must follow the specified format");
+                    
+                    let ip = IpAddr::from_str(raw_replica_data.0.as_str()).unwrap();
+                    let port = u16::from_str(raw_replica_data.1.as_str()).unwrap();
 
-
-
+                    replica_connection = Some((ip, port));
                 }
                 _ => {
                     Args::print_help();
@@ -103,16 +123,21 @@ impl Args {
             threads,
             log_level,
             db_dir: db_dir.to_path_buf(),
-            db_filename
+            db_filename,
+            replica_connection,
         };
 
         set_log_level(&args);
-        create_file_if_missing(&args.db_dir.clone(), &args.db_filename);
+        // create_file_if_missing(&args.db_dir.clone(), &args.db_filename);
         return args;
     }
 
     pub fn get_db_config(&self) -> DbConfig {
-        return DbConfig::new(self.db_dir.clone(), self.db_filename.clone());
+        return DbConfig::new(
+            self.db_dir.clone(),
+            self.db_filename.clone(),
+            self.replica_connection,
+        );
     }
 }
 
