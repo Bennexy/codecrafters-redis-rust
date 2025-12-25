@@ -5,7 +5,7 @@
 # You can also check bacon's own bacon.toml file
 #  as an example: https://github.com/Canop/bacon/blob/main/bacon.toml
 
-default_job = "clippy-all"
+default_job = "clippy"
 default_watch = true
 
 [color]

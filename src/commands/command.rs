@@ -2,7 +2,7 @@ use std::{collections::VecDeque, env::Args};
 
 use anyhow::{anyhow, Result};
 
-use crate::{commands::{config::ConfigCommand, echo::EchoCommand, get::GetCommand, keys::KeysCommand, ping::PingCommand, set::SetCommand, traits::{Command, Execute, Parse, Parsed, Unparsed}}, parser::messages::RedisMessageType, redis_commands};
+use crate::{commands::{config::ConfigCommand, echo::EchoCommand, get::GetCommand, info::InfoCommand, keys::KeysCommand, ping::PingCommand, set::SetCommand, traits::{Command, Execute, Parse, Parsed, Unparsed}}, parser::messages::RedisMessageType, redis_commands};
 
 
 redis_commands! {
@@ -12,6 +12,7 @@ redis_commands! {
     Get => GetCommand,
     Config => ConfigCommand,
     Keys => KeysCommand,
+    Info => InfoCommand,
 }
 
 
@@ -29,6 +30,7 @@ impl UnparsedCommandType {
             "ECHO" => Self::Echo(Command::<Unparsed, EchoCommand>::new(args)),
             "CONFIG" => Self::Config(Command::<Unparsed, ConfigCommand>::new(args)),
             "KEYS" => Self::Keys(Command::<Unparsed, KeysCommand>::new(args)),
+            "INFO" => Self::Info(Command::<Unparsed, InfoCommand>::new(args)),
             // "SAVE" => Self::SAVE(SaveCommand::new(args)),
             _other => return Err(RedisMessageType::error(format!("Unknown command name: '{}'", _other))),
         };

@@ -7,3 +7,4 @@ pub mod ping;
 pub mod echo;
 pub mod config;
 pub mod keys;
+pub mod info;

@@ -25,10 +25,46 @@ pub fn init_db(db_config: DbConfig) {
     trace!("Config has been initialized!")
 }
 
+
+#[derive(Debug, Clone)]
+pub enum ServerRole {
+    Master,
+    Slave,
+}
+
+impl ServerRole {
+    pub const fn name(&self) -> &'static str {
+        return match self {
+            Self::Master => "master",
+            Self::Slave => "slave",
+        };
+    }
+}
+
+
+#[derive(Debug, Clone)]
+pub struct ReplicationData {
+    pub role: ServerRole,
+    // connected_slaves: u32,
+    // master_repl_id: String,
+    // master_repl_offset: u32,
+    // second_repl_offset: i32,
+    // repl_backlog_active: u32,
+    // repl_backlog_size: u32
+
+}
+
+impl ReplicationData {
+    fn server() -> Self {
+        return Self { role: ServerRole::Master }
+    }
+}
+
 #[derive(Debug, Clone)]
 pub struct DbConfig {
     pub db_dir: PathBuf,
     pub db_filename: String,
+    pub replication_data: ReplicationData,
 }
 
 impl DbConfig {
@@ -36,6 +72,7 @@ impl DbConfig {
         return Self {
             db_dir: PathBuf::new(),
             db_filename: String::new(),
+            replication_data: ReplicationData::server()
         };
     }
 
@@ -43,6 +80,7 @@ impl DbConfig {
         return Self {
             db_dir,
             db_filename,
+            replication_data: ReplicationData::server()
         };
     }
 
