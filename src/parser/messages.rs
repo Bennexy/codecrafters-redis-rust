@@ -22,14 +22,6 @@ impl Display for RedisMessageType {
     }
 }
 
-// pub trait RespEncoder {
-//     fn encode(&self) -> Vec<u8>;
-// }
-
-// pub trait RespDecoder {
-//     fn decode(input: Vec<u8>) -> RedisDecodeResult;
-// }
-
 impl RedisMessageType {
     pub fn encode(&self) -> String {
         match self {
@@ -82,6 +74,11 @@ impl RedisMessageType {
 
     pub fn bulk_string<S: Into<String>>(s: S) -> Self {
         RedisMessageType::BulkString(s.into())
+    }
+
+    pub fn bulk_string_array<S: Into<String>>(values: Vec<S>) -> Self {
+        let value = values.into_iter().map(|v| RedisMessageType::bulk_string(v)).collect();
+        return RedisMessageType::Array(value);
     }
 
     /// returns the value if self is of type BulkString

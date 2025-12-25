@@ -43,13 +43,6 @@ impl Parse for KeysCommand {
 
 impl Execute for KeysCommand {
     fn execute(self) -> Result<RedisMessageType, RedisMessageType> {
-        let data: VecDeque<RedisMessageType> = get_db()
-            .get_all_keys()
-            .into_iter()
-            .filter(|key| key.starts_with(self.pattern.as_str()))
-            .map(RedisMessageType::BulkString)
-            .collect();
-
-        return Ok(RedisMessageType::Array(data));
+        return Ok(RedisMessageType::bulk_string_array(get_db().get_all_keys()));
     }
 }
