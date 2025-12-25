@@ -16,7 +16,7 @@ pub struct Args {
     pub log_level: LevelFilter,
     pub db_dir: PathBuf,
     pub db_filename: String,
-    pub replica_connection: Option<(IpAddr, u16)>,
+    pub replica_connection: Option<(String, u16)>,
 }
 
 impl Args {
@@ -98,18 +98,18 @@ impl Args {
                     db_filename = args.next().expect("Redis file name must be specified");
                 }
                 "--replicaof" => {
-                    let raw_replica_data = args
+                    let arg = args
                         .next()
-                        .expect("Redis Replication arg must be specified")
-                        .replace("\"", "")
-                        .split_once(" ")
-                        .map(|(a, b)| (a.to_owned(), b.to_owned()))
-                        .expect("Redis Replication arg must follow the specified format");
-                    
-                    let ip = IpAddr::from_str(raw_replica_data.0.as_str()).unwrap();
-                    let port = u16::from_str(raw_replica_data.1.as_str()).unwrap();
+                        .expect("Redis replication arg must be specified");
 
-                    replica_connection = Some((ip, port));
+                    let (host, port) = arg
+                        .trim_matches('"')
+                        .split_once(' ')
+                        .expect("Redis replication arg must be: \"<host> <port>\"");
+
+                    let port = u16::from_str(port).unwrap();
+
+                    replica_connection = Some((host.to_owned(), port));
                 }
                 _ => {
                     Args::print_help();
@@ -137,7 +137,7 @@ impl Args {
         return DbConfig::new(
             self.db_dir.clone(),
             self.db_filename.clone(),
-            self.replica_connection,
+            self.replica_connection.clone(),
         );
     }
 }

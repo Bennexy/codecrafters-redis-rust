@@ -29,7 +29,7 @@ pub fn init_db(db_config: DbConfig) {
 #[derive(Debug, Clone)]
 pub enum ServerRole {
     Master,
-    Slave((IpAddr, u16)),
+    Slave((String, u16)),
 }
 
 impl ServerRole {
@@ -59,8 +59,8 @@ impl ReplicationData {
         return Self { role: ServerRole::Master }
     }
 
-    fn slave(ip: IpAddr, port: u16) -> Self {
-        return Self { role: ServerRole::Slave((ip, port))};
+    fn slave(host: String, port: u16) -> Self {
+        return Self { role: ServerRole::Slave((host, port))};
     }
 }
 
@@ -80,15 +80,15 @@ impl DbConfig {
         };
     }
 
-    pub fn new(db_dir: PathBuf, db_filename: String, replica_connection: Option<(IpAddr, u16)>) -> Self {
+    pub fn new(db_dir: PathBuf, db_filename: String, replica_connection: Option<(String, u16)>) -> Self {
         let replication_data = match replica_connection {
             None => ReplicationData::server(),
-            Some((ip, port)) => ReplicationData::slave(ip, port),
+            Some((host, port)) => ReplicationData::slave(host, port),
         };
         return Self {
             db_dir,
             db_filename,
-            replication_data: ReplicationData::server()
+            replication_data
         };
     }
 
