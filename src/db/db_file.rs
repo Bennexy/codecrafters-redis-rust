@@ -14,8 +14,8 @@ pub struct RdbFile {
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Header {
-    magic_string: [u8; 5],
-    version: [u8; 4],
+    magic_string: String,
+    version: String,
 }
 
 #[derive(Debug, PartialEq, Eq, Clone)]
@@ -93,15 +93,11 @@ impl Header {
             return Err(anyhow!("Header decode input must to of length 9!"));
         }
 
-        // playing around with unsafe. Its safe since the length of the input is validated.
-        let (magic_string, version) = unsafe {
-            let ptr = s.as_ptr();
-            let magic_string: [u8; 5] = *(ptr as *const [u8; 5]);
-            let version: [u8; 4] = *(ptr.add(5) as *const [u8; 4]);
-            (magic_string, version)
-        };
+        let magic_string = str::from_utf8(&s[0..5])?.to_string();
+        let version = str::from_utf8(&s[5..9])?.to_string();
 
-        if magic_string != "REDIS".as_bytes() {
+
+        if magic_string.to_uppercase() != "REDIS" {
             return Err(anyhow!("Magic string is incorrect! Must be 'REDIS'"));
         }
 
@@ -591,8 +587,8 @@ mod test {
 
             let header = Header::decode(header).unwrap();
 
-            assert_eq!([0x52, 0x45, 0x44, 0x49, 0x53], header.magic_string);
-            assert_eq!([0x30, 0x30, 0x31, 0x31], header.version)
+            assert_eq!("REDIS".to_string(), header.magic_string);
+            assert_eq!("0011".to_string(), header.version)
         }
     }
 

@@ -1,4 +1,4 @@
-use std::fmt::Display;
+use std::{collections::VecDeque, fmt::Display};
 
 use anyhow::{anyhow, Result};
 
@@ -13,7 +13,7 @@ pub enum RedisMessageType {
     BulkString(String),
     NullBulkString,
     Integer(i64),
-    Array(Vec<RedisMessageType>),
+    Array(VecDeque<RedisMessageType>),
 }
 
 impl Display for RedisMessageType {
@@ -85,6 +85,15 @@ impl RedisMessageType {
         RedisMessageType::BulkString(s.into())
     }
 
+    /// returns the value if self is of type BulkString
+    /// Else returns a RedisMessageType::Error with an error message
+    pub fn bulk_string_value(&self) -> Result<String, RedisMessageType> {
+        return match self {
+            Self::BulkString(val) => Ok(val.clone()),
+            _ => Err(Self::error(format!("Expected BulkString not {}", self.message_type())))
+        };
+    }
+
     pub fn message_type(&self) -> &'static str {
         return match self {
             Self::SimpleString(_) => "SimpleString",
@@ -97,7 +106,7 @@ impl RedisMessageType {
     }
 }
 
-fn encode_array_elements(data: &Vec<RedisMessageType>) -> String {
+fn encode_array_elements(data: &VecDeque<RedisMessageType>) -> String {
     return data.iter().map(|message| message.encode()).collect::<Vec<String>>().concat();
 }
 
@@ -159,14 +168,14 @@ fn parse_array(s: &str) -> RedisDecodeResult {
 
     let length = usize::from_str_radix(&length_str[1..], 10)?;
 
-    let mut array = Vec::with_capacity(length);
+    let mut array = VecDeque::with_capacity(length);
     let mut all_value_length = 0;
 
     for _ in 0..length {
         let message_type = RedisMessageType::decode(value)?;
         all_value_length += message_type.1;
         value = &value[message_type.1..];
-        array.push(message_type.0);
+        array.push_back(message_type.0);
     }
 
     return Ok((RedisMessageType::Array(array), length_str.len() + 3 + all_value_length));
@@ -345,7 +354,7 @@ mod test {
 
         #[test]
         fn decode_empty_array() {
-            let expected = RedisMessageType::Array(vec![]);
+            let expected = RedisMessageType::Array(vec![].into());
             let input = "*0\r\n";
 
             let result = RedisMessageType::decode(input).unwrap();
@@ -360,7 +369,7 @@ mod test {
                 RedisMessageType::Integer(-23),
                 RedisMessageType::SimpleString("asdf test me here!".into()),
                 RedisMessageType::BulkString("Imma test\r\ner here!".into()),
-            ]);
+            ].into());
             let input = "*4\r\n:123\r\n:-23\r\n+asdf test me here!\r\n$19\r\nImma test\r\ner here!\r\n";
         
 

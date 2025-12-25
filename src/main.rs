@@ -3,19 +3,25 @@
 use core::str;
 use log::{debug, error, info, trace};
 use std::{
+    collections::VecDeque,
     io::{self, ErrorKind, Read, Write},
     net::{SocketAddr, TcpListener, TcpStream},
     result::Result,
 };
 use utils::{cli::Args, thread_pool::ThreadPool};
 
+pub mod commands;
 pub mod consts;
+pub mod db;
 pub mod parser;
 pub mod utils;
-pub mod commands;
-pub mod db;
 
-use crate::{commands::commands::{Command, Execute}, db::data_store::init_db, parser::messages::RedisMessageType, utils::logger::generate_hex_log};
+use crate::{
+    commands::{command::{UnparsedCommandType}, traits::Command},
+    db::data_store::init_db,
+    parser::messages::RedisMessageType,
+    utils::logger::generate_hex_log,
+};
 
 fn main() {
     let args: Args = Args::parse();
@@ -24,12 +30,19 @@ fn main() {
     let server_address = SocketAddr::new(args.host, args.port);
     let pool = ThreadPool::new(args.threads.into());
 
-    info!("Starting server with {} threads on ip: {} and port: {}", args.threads, server_address.ip(), server_address.port());
+    info!(
+        "Starting server with {} threads on ip: {} and port: {}",
+        args.threads,
+        server_address.ip(),
+        server_address.port()
+    );
     let listener = match TcpListener::bind(server_address) {
         Ok(server) => server,
-        Err(err) => panic!("Unable to bind TcpListener to address: {} due to {}", server_address, err),
+        Err(err) => panic!(
+            "Unable to bind TcpListener to address: {} due to {}",
+            server_address, err
+        ),
     };
-
 
     for stream in listener.incoming() {
         match stream {
@@ -66,7 +79,10 @@ fn recieve_message(mut stream: TcpStream) {
     'connection: loop {
         let raw_message = match read_message(&mut stream) {
             Ok(raw_message) => {
-                trace!("Successfully read tcp message. {:?}", generate_hex_log(&raw_message));
+                trace!(
+                    "Successfully read tcp message. {:?}",
+                    generate_hex_log(&raw_message)
+                );
                 if raw_message.is_empty() {
                     info!("No bytes recieved. Closing connection");
                     return;
@@ -85,27 +101,30 @@ fn recieve_message(mut stream: TcpStream) {
         let message_input =
             str::from_utf8(&raw_message).expect("Unable to parse input bytestream to str utf8");
         debug!("Message recieved: {:?}", generate_hex_log(&raw_message));
-        let command = RedisMessageType::decode(message_input)
-            .expect("unable to parse RedisMessageType from input byte stream")
-            .0;
 
-        let response = match command {
-            RedisMessageType::Array(val) => process_command_array(val),
-            other => panic!(
-                "Expected an RedisMessageType::Array as a command input, but got: {}",
-                other.to_string()
-            ),
+        let response = match process_message(message_input) {
+            Ok(message) => message,
+            Err(message) => message,
         };
 
-        stream.write_all(response.encode().as_bytes()).expect("Failed to write to stream. Should never happen!");
+        stream
+            .write_all(response.encode().as_bytes())
+            .expect("Failed to write to stream. Should never happen!");
     }
 }
 
-fn process_command_array(array: Vec<RedisMessageType>) -> RedisMessageType {
+fn process_message(message: &str) -> Result<RedisMessageType, RedisMessageType> {
+    let parsed_message = RedisMessageType::decode(message)
+        .expect("unable to parse RedisMessageType from input byte stream")
+        .0;
 
-    let (command, args) = array.split_first().expect("Redis expects at least a single command!");
+    let command: UnparsedCommandType = match parsed_message {
+        RedisMessageType::Array(val) => UnparsedCommandType::new(val)?,
+        other => panic!(
+            "Expected an RedisMessageType::Array as a command input, but got: {}",
+            other.to_string()
+        ),
+    };
 
-    let command: Command = Command::from(command);
-    return command.execute(args);
-
+    return command.parse()?.execute();
 }
