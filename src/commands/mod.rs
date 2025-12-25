@@ -1,7 +1,9 @@
-pub mod commands;
+pub mod macros;
+pub mod traits;
+pub mod command;
 pub mod set;
 pub mod get;
-pub mod config;
+pub mod ping;
 pub mod echo;
+pub mod config;
 pub mod keys;
-pub mod save;

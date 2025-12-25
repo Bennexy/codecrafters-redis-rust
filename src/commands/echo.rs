@@ -1,31 +1,43 @@
-use log::debug;
+use std::collections::VecDeque;
 
-use crate::{commands::commands::Execute, db::data_store::DataUnit, parser::messages::RedisMessageType};
+use crate::{
+    commands::{
+        echo,
+        traits::{ArgErrorMessageGenerator, CommandName, Execute, Parse},
+    },
+    parser::messages::RedisMessageType,
+};
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct EchoCommand;
+pub struct EchoCommand {
+    echo_value: RedisMessageType,
+}
 
 impl EchoCommand {
-    pub fn new() -> Self {
-        return Self {};
+    fn new(echo_value: RedisMessageType) -> Self {
+        return Self { echo_value };
+    }
+}
+
+// could be moved into a procedural macro in the future
+impl CommandName for EchoCommand {
+    fn command_name() -> &'static str {
+        return "echo";
+    }
+}
+impl ArgErrorMessageGenerator<EchoCommand> for EchoCommand {}
+
+impl Parse for EchoCommand {
+    fn parse(mut args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
+        // echo must have exactly 1 argument
+        match (args.pop_front(), args.is_empty()) {
+            (Some(arg), true) => Ok(Self::new(arg)),
+            _ => Err(Self::arg_count_error()),
+        }
     }
 }
 
 impl Execute for EchoCommand {
-    fn execute(&self, args: &[RedisMessageType]) -> RedisMessageType {
-
-        let value = match args.get(0) {
-            Some(val) => val,
-            None => return RedisMessageType::Error("ECHO expects an argument!".to_string()),
-        };
-    
-        let echo_value = match value.as_string() {
-            Some(val) => val,
-            None => {
-                return RedisMessageType::Error("GET expects a Stringable key argument!".to_string())
-            }
-        };
-
-        return RedisMessageType::BulkString(echo_value);
+    fn execute(self) -> Result<RedisMessageType, RedisMessageType> {
+        return Ok(self.echo_value);
     }
 }

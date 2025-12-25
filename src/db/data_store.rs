@@ -104,7 +104,7 @@ impl DataStore {
     }
 
     /// gets the key, if it has expired return None and remove the key from the db.
-    pub fn get<S: Into<String>>(&self, key: S) -> Option<String> {
+    pub fn get<S: Into<String>>(&self, key: S) -> Option<DataUnit> {
         let key = key.into();
         // needs limited scope, else it will threadlock
         let value = self.db.get(&key)?.clone();
@@ -116,7 +116,7 @@ impl DataStore {
         }
 
         trace!("Value of key '{}' found and returned", &key);
-        return Some(value.value);
+        return Some(value);
     }
 
     fn remove_key<S: Into<String>>(&self, key: S) {
@@ -153,6 +153,7 @@ impl DataStore {
 pub struct DataUnit {
     pub key: String,
     pub value: String,
+    // todo: change to Expiry object
     expiry_deadline: Option<Instant>,
 }
 
@@ -160,12 +161,14 @@ pub struct DataUnit {
 pub enum Expiry {
     Ttl(Duration),
     Deadline(SystemTime),
+    Instant(Instant),
 }
 
 impl Expiry {
     fn get_expiry_deadline(&self) -> Instant {
         let now = Instant::now();
         return match self {
+            Self::Instant(instant) => *instant, 
             Self::Ttl(ttl) => now.checked_add(*ttl).unwrap_or(now),
             Self::Deadline(timespamp) => timespamp
                 .duration_since(SystemTime::now())
@@ -222,14 +225,14 @@ mod tests {
             );
             assert_eq!(
                 "value",
-                dataStore.get("key").unwrap(),
+                dataStore.get("key").unwrap().value,
                 "DataStore must have the correct value connected to the key"
             );
 
             dataStore.set("key", DataUnit::new("key","value2", None));
             assert_eq!(
                 "value2",
-                dataStore.get("key").unwrap(),
+                dataStore.get("key").unwrap().value,
                 "DataStore must have the overridden value connected to the key"
             );
 
@@ -248,7 +251,7 @@ mod tests {
 
             assert_eq!(
                 "value",
-                dataStore.get("key").unwrap(),
+                dataStore.get("key").unwrap().value,
                 "Value should not expire instantly!"
             );
         }

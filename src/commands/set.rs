@@ -1,281 +1,196 @@
 use std::{
-    collections::{HashMap, btree_map::Values}, time::{Duration, SystemTime, UNIX_EPOCH}, usize
+    collections::VecDeque,
+    time::{Duration, SystemTime},
 };
 
-use log::{debug, trace};
+use log::trace;
 
 use crate::{
-    commands::commands::Execute,
+    commands::traits::{
+        ArgErrorMessageGenerator, CommandName, Execute, Parse, Parsed, StateItemType, Unparsed,
+    },
     db::data_store::{DataUnit, Expiry, get_db},
     parser::messages::RedisMessageType,
 };
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct SetCommand;
+enum SetCondition {
+    NX, // -- Only set the key if it does not already exist.
+    XX, // -- Only set the key if it already exists.
+}
 
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub enum SetArguments {
-    NX,             // -- Only set the key if it does not already exist.
-    XX,             // -- Only set the key if it already exists.
-    IFEQ, // ifeq-value -- Set the key’s value and expiration only if its current value is equal to ifeq-value. If the key doesn’t exist, it won’t be created.
-    IFNE, // ifne-value -- Set the key’s value and expiration only if its current value is not equal to ifne-value. If the key doesn’t exist, it will be created.
-    IFDEQ, // ifeq-digest -- Set the key’s value and expiration only if the hash digest of its current value is equal to ifeq-digest. If the key doesn’t exist, it won’t be created. See the Hash Digest section below for more information.
-    IFDNE, // ifne-digest -- Set the key’s value and expiration only if the hash digest of its current value is not equal to ifne-digest. If the key doesn’t exist, it will be created. See the Hash Digest section below for more information.
-    GET, // -- Return the old string stored at key, or nil if key did not exist. An error is returned and SET aborted if the value stored at key is not a string.
+impl SetCondition {
+    fn from(val: String) -> Option<Self> {
+        match val.to_uppercase().as_str() {
+            "NX" => Some(Self::NX),
+            "XX" => Some(Self::XX),
+            _ => None,
+        }
+    }
+}
+
+enum ExpiryCondition {
     EX(Duration), // seconds -- Set the specified expire time, in seconds (a positive integer).
     PX(Duration), // milliseconds -- Set the specified expire time, in milliseconds (a positive integer).
     EXAT(SystemTime), // imestamp-seconds -- Set the specified Unix time at which the key will expire, in seconds (a positive integer).
     PXAT(SystemTime), // imestamp-milliseconds -- Set the specified Unix time at which the key will expire, in milliseconds (a positive integer).
-    KEEPTTL,        // -- Retain the time to live associated with the key.
+    KEEPTTL,          // -- Retain the time to live associated with the key.
+}
+
+pub struct SetCommand {
+    key: String,
+    value: String,
+    set_condition: Option<SetCondition>,
+    expiry_condition: Option<ExpiryCondition>,
+    return_old_value: bool,
 }
 
 impl SetCommand {
-    pub fn new() -> Self {
-        return Self {};
+    pub fn new(
+        key: String,
+        value: String,
+        set_condition: Option<SetCondition>,
+        expiry_condition: Option<ExpiryCondition>,
+        return_old_value: bool,
+    ) -> Self {
+        return Self {
+            key,
+            value,
+            set_condition,
+            expiry_condition,
+            return_old_value,
+        };
+    }
+}
+
+impl CommandName for SetCommand {
+    fn command_name() -> &'static str {
+        return "ping";
+    }
+}
+impl ArgErrorMessageGenerator<SetCommand> for SetCommand {}
+
+impl Parse for SetCommand {
+    fn parse(mut args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
+        let key = args
+            .pop_front()
+            .ok_or(Self::arg_count_error())?
+            .bulk_string_value()?;
+
+        let value = args
+            .pop_front()
+            .ok_or(Self::arg_count_error())?
+            .bulk_string_value()?;
+
+        let mut set_condition: Option<SetCondition> = None;
+        let mut expiry_condition: Option<ExpiryCondition> = None;
+        let mut return_old_value = false;
+
+        while let Some(arg) = args.pop_front() {
+            let val = arg.bulk_string_value()?; // get string
+
+            match val.to_uppercase().as_str() {
+                "NX" | "XX" => {
+                    set_condition = SetCondition::from(val); // overwrite if set
+                }
+                "GET" => {
+                    return_old_value = true;
+                }
+                "EX" => {
+                    // next argument must exist
+                    let arg = args.pop_front().ok_or(Self::arg_count_error())?;
+                    let secs = arg.bulk_string_value()?.parse::<u64>().map_err(|_| {
+                        RedisMessageType::error("ERR value is not an integer or out of range")
+                    })?;
+                    expiry_condition = Some(ExpiryCondition::EX(Duration::from_secs(secs)));
+                }
+                "PX" => {
+                    let arg = args.pop_front().ok_or(Self::arg_count_error())?;
+                    let ms = arg.bulk_string_value()?.parse::<u64>().map_err(|_| {
+                        RedisMessageType::error("ERR value is not an integer or out of range")
+                    })?;
+                    expiry_condition = Some(ExpiryCondition::PX(Duration::from_millis(ms)));
+                }
+                "EXAT" => {
+                    let arg = args.pop_front().ok_or(Self::arg_count_error())?;
+                    let ts = arg.bulk_string_value()?.parse::<u64>().map_err(|_| {
+                        RedisMessageType::error("ERR value is not an integer or out of range")
+                    })?;
+                    expiry_condition = Some(ExpiryCondition::EXAT(
+                        SystemTime::UNIX_EPOCH + Duration::from_secs(ts),
+                    ));
+                }
+                "PXAT" => {
+                    let arg = args.pop_front().ok_or(Self::arg_count_error())?;
+                    let ts = arg.bulk_string_value()?.parse::<u64>().map_err(|_| {
+                        RedisMessageType::error("ERR value is not an integer or out of range")
+                    })?;
+                    expiry_condition = Some(ExpiryCondition::PXAT(
+                        SystemTime::UNIX_EPOCH + Duration::from_millis(ts),
+                    ));
+                }
+                "KEEPTTL" => {
+                    expiry_condition = Some(ExpiryCondition::KEEPTTL);
+                }
+                _ => {
+                    return Err(RedisMessageType::error(format!(
+                        "ERR value is not a valid argument for command 'set'."
+                    )));
+                }
+            }
+        }
+
+        return Ok(SetCommand::new(
+            key,
+            value,
+            set_condition,
+            expiry_condition,
+            return_old_value,
+        ));
     }
 }
 
 impl Execute for SetCommand {
-    fn execute(&self, args: &[RedisMessageType]) -> RedisMessageType {
-        let key_value = match args.get(0) {
-            Some(val) => val,
-            None => return RedisMessageType::Error("SET expects an key argument!".to_string()),
-        };
+    fn execute(self) -> Result<RedisMessageType, RedisMessageType> {
+        let old_value = get_db().get(&self.key);
 
-        let value_value = match args.get(1) {
-            Some(val) => val,
-            None => return RedisMessageType::Error("SET expects an value argument!".to_string()),
-        };
-
-        let key = match key_value.as_string() {
-            Some(val) => val,
-            None => {
-                return RedisMessageType::Error(
-                    "SET expects a Stringable key argument!".to_string(),
-                )
-            }
-        };
-
-        // todo: save not only string values
-        let save_value = match value_value.as_string() {
-            Some(val) => val,
-            None => {
-                return RedisMessageType::Error(
-                    "SET expects a Stringable value argument!".to_string(),
-                )
-            }
-        };
-
-        let old_value = get_db().get(&key);
-
-        let arguments = match parse_arguments(args) {
-            Ok(val) => val,
-            Err(err) => return err,
-        };
-
-        let expiry = arguments.iter().find(|arg| arg.is_expiry_argument()).map(|v| match v {
-            SetArguments::EX(value)
-            | SetArguments::PX(value) => Expiry::Ttl(*value),
-            SetArguments::EXAT(value)
-            | SetArguments::PXAT(value) => Expiry::Deadline(*value),
-            SetArguments::KEEPTTL => unimplemented!("Needs impl"),
-            _ => unreachable!(),
+        let expiry = self.expiry_condition.and_then(|condition| match condition {
+            ExpiryCondition::EX(dur) | ExpiryCondition::PX(dur) => Some(Expiry::Ttl(dur)),
+            ExpiryCondition::EXAT(st) | ExpiryCondition::PXAT(st) => Some(Expiry::Deadline(st)),
+            ExpiryCondition::KEEPTTL => old_value.clone()
+                .and_then(|v| v.get_expiry_deadline())
+                .map(Expiry::Instant),
         });
 
-        let set_logic_argument = arguments.iter().find(|arg| arg.is_set_logic_argument());
-        let return_value_argument = arguments.iter().find(|arg| arg.is_get_logic_argument()).is_some();
+        let data = DataUnit::new(self.key.clone(), self.value, expiry);
 
-
-        debug!("{:?}", arguments);
-
-        match set_logic_argument {
-            Some(val) => match val {
-                SetArguments::NX => {
+        match self.set_condition {
+            None => get_db().set(self.key, data),
+            Some(condition) => match condition {
+                SetCondition::NX => {
                     if old_value.is_some() {
-                        let error = format!("Not setting value for key: '{}' due to 'NX' argument (create only command) and exsisting value.", &key);
+                        let error = format!("Not setting value for key: '{}' due to 'NX' argument (create only command) and exsisting value.", self.key);
                         trace!("{}", error);
-                        return RedisMessageType::error(error);
+                        return Err(RedisMessageType::error(error));
                     }
-                    get_db().set(key.clone(), DataUnit::new(key, save_value, expiry));
+                    get_db().set(self.key, data);
                 },
-                SetArguments::XX => {
+                SetCondition::XX => {
                     if old_value.is_none() {
-                        let error = format!("Not setting value for key: '{}' due to 'XX' argument (update only command) and non exsisting value.", &key);
+                        let error = format!("Not setting value for key: '{}' due to 'XX' argument (update only command) and non exsisting value.", self.key);
                         trace!("{}", error);
-                        return RedisMessageType::error(error);
+                        return Err(RedisMessageType::error(error));
                     }
-                    get_db().set(key.clone(), DataUnit::new(key, save_value, expiry));
+                    get_db().set(self.key, data);
                 },
-                _ => unreachable!(),
-            },
-            None => get_db().set(key.clone(), DataUnit::new(key, save_value, expiry))
-        }
-
-        
-        if return_value_argument {
-            if let Some(old) = old_value {
-                return RedisMessageType::SimpleString(old);
-            };
-        }
-                
-        let mut return_value = RedisMessageType::SimpleString("OK".into());
-        return return_value;
-    }
-}
-
-impl SetArguments {
-    fn decode(string: &String) -> Result<SetArguments, RedisMessageType> {
-        match string.as_str() {
-            "NX" => Ok(SetArguments::NX),
-            "XX" => Ok(SetArguments::XX),
-            "IFEQ" => Ok(SetArguments::IFEQ),
-            "IFNE" => Ok(SetArguments::IFNE),
-            "IFDEQ" => Ok(SetArguments::IFDEQ),
-            "IFDNE" => Ok(SetArguments::IFDNE),
-            "GET" => Ok(SetArguments::GET),
-            "EX" => Ok(SetArguments::EX(Duration::from_secs(0))),
-            "PX" => Ok(SetArguments::PX(Duration::from_secs(0))),
-            "EXAT" => Ok(SetArguments::EXAT(SystemTime::now())),
-            "PXAT" => Ok(SetArguments::PXAT(SystemTime::now())),
-            "KEEPTTL" => Ok(SetArguments::KEEPTTL),
-            unknown_value => Err(RedisMessageType::error(format!(
-                "Unknown Set command argument: {}",
-                unknown_value
-            ))),
-        }
-    }
-
-    fn is_expiry_argument(&self) -> bool {
-        return match self {
-            SetArguments::KEEPTTL
-            | SetArguments::EX(_)
-            | SetArguments::PX(_)
-            | SetArguments::EXAT(_)
-            | SetArguments::PXAT(_) => true,
-            _ => false,
-        };
-    }
-
-    fn is_set_logic_argument(&self) -> bool {
-        return match self {
-            SetArguments::NX | SetArguments::XX => true,
-            _ => false,
-        };
-    }
-
-    fn is_get_logic_argument(&self) -> bool {
-        return match self {
-            SetArguments::GET => true,
-            _ => false,
-        };
-    }
-}
-
-fn parse_arguments(args: &[RedisMessageType]) -> Result<Vec<SetArguments>, RedisMessageType> {
-    let mut arguments = Vec::new();
-
-    let arg_buffer = &args[2..];
-    if arg_buffer.is_empty() {
-        return Ok(arguments);
-    }
-
-    let mut i: usize = 0;
-    while i < arg_buffer.len() {
-        let mut argument = match arg_buffer
-            .get(i)
-            .expect("Issue while parsing arguments on set command. Should never happen")
-        {
-            RedisMessageType::BulkString(val) => SetArguments::decode(&val)?,
-            _ => {
-                return Err(RedisMessageType::error(format!(
-                    "Expected to recieve a BulkString type argument not {}",
-                    arg_buffer.get(i).unwrap()
-                )))
             }
         };
 
-        if argument.is_expiry_argument() {
-            i += 1;
-            let expiry_value = parse_expiry(arg_buffer.get(i))?;
-            argument = match argument {
-                SetArguments::EX(_val) => SetArguments::EX(Duration::from_secs(expiry_value)),
-                SetArguments::PX(_val) => SetArguments::PX(Duration::from_millis(expiry_value)),
-                SetArguments::EXAT(_val) => SetArguments::EXAT(UNIX_EPOCH + Duration::from_secs(expiry_value)),
-                SetArguments::PXAT(_val) => SetArguments::PXAT(UNIX_EPOCH + Duration::from_millis(expiry_value)),
-                val => val,
-            };
-
+        if self.return_old_value {
+            return Ok(old_value.map(|v| RedisMessageType::bulk_string(v.value)).unwrap_or(RedisMessageType::NullBulkString));
+        } else {
+            return Ok(RedisMessageType::simple_string("OK"));
         }
 
-        arguments.push(argument);
-        i += 1;
+
     }
-
-    let mut expiry_argument_present = false;
-    let mut set_logic_present = false;
-    for arg in &arguments {
-        if arg.is_expiry_argument() {
-            if expiry_argument_present {
-                return Err(RedisMessageType::error("Invalid SET command. Recieved multiple expiry arguments, only one of {'EX', 'PX', 'EXAT', 'PXAT'} is allowed."));
-            };
-            expiry_argument_present = true;
-        };
-        if arg.is_set_logic_argument() {
-            if set_logic_present {
-                return Err(RedisMessageType::error("Invalid SET command. Recieved both {'NX', 'XX'} only one of them may be selected!"))
-            }
-            set_logic_present = true;
-        }
-    }
-
-    return Ok(arguments);
 }
-
-fn parse_expiry(arg: Option<&RedisMessageType>) -> Result<u64, RedisMessageType> {
-    let arg = arg.ok_or_else(|| RedisMessageType::error("invalid"))?;
-
-    let numeric_value = match arg {
-        RedisMessageType::BulkString(val) => match u64::from_str_radix(val, 10) {
-            Ok(val) => val.max(0) as u64,
-            Err(_) => {
-                return Err(RedisMessageType::Error(format!(
-                    "SET with expiry argument expects a Bulk String numeric value argument. Not {}!",
-                    val
-                )))
-            }
-        },
-        val => {
-            return Err(RedisMessageType::Error(format!(
-                "SET with expiry argument expects a Bulk String numeric value argument! Argument is of type {}",
-                val
-            )))
-        }
-    };
-
-    trace!("Expiration duration: {:?}", numeric_value);
-
-    return Ok(numeric_value);
-}
-
-// todo: needs overhaul!
-pub fn expiry_from_unix_secs(unix_secs: u64) -> Duration {
-    let now_system = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("System time before Unix epoch");
-
-    let delta = unix_secs - now_system.as_secs();
-    return Duration::from_secs(delta);
-}
-
-pub fn expiry_from_unix_millis(unix_millis: u64) -> Duration {
-    let now_system = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .expect("System time before Unix epoch");
-
-    let now_millis = now_system.as_millis();
-
-    // truncating u64 -> u64 is safe for reasonable timestamps
-    let delta = unix_millis - now_millis as u64;
-    return Duration::from_millis(delta);
-}
-

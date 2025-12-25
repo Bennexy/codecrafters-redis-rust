@@ -11,6 +11,14 @@ version = "0.1.0"
 authors = ["Codecrafters <hello@codecrafters.io>"]
 edition = "2021"
 
+
+[profile.release]
+opt-level = "z"       # Optimize for size ("z") or "s" for smaller
+lto = true            # Enable Link-Time Optimization
+codegen-units = 1     # Better optimization at the cost of longer compile time
+debug = false         # No debug info
+panic = "abort"       # Optional: makes binary smaller/faster
+
 # DON'T EDIT THIS!
 #
 # Codecrafters relies on this file being intact to run tests successfully. Any changes
