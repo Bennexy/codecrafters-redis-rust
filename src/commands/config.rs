@@ -107,8 +107,8 @@ impl Parse for ConfigCommand {
             "HELP" => Action::Help,
             "REWRITE" => Action::Rewrite,
             "RESETSTAT" => Action::ResetStat,
-            "GET" => Self::parse_get_command(args)?,
-            "SET" => Self::parse_set_command(args)?,
+            "GET" => parse_get_command(args)?,
+            "SET" => parse_set_command(args)?,
             _val => {
                 return Err(RedisMessageType::error(format!(
                     "ERR unkown subcommand '{}'. Try CONFIG HELP",
