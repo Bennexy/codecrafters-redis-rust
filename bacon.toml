@@ -22,7 +22,7 @@ allow_warnings = true
 background = true
 
 
-[jobs.run_slave]
+[jobs.run-slave]
 # command = ["cargo", "run", "--color", "always", "--", "--log-level", "trace"]
 command = ["./your_program.sh", "--log-level", "trace", "--replicaof", "\"localhost 6379\"", "--port", "6380"]
 env = { RUST_LOG_STYLE = "always", CARGO_TERM_COLOR = "always" }

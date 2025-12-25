@@ -12,7 +12,7 @@ use anyhow::{anyhow, Result};
 use log::{debug, info, trace};
 use once_cell::sync::OnceCell;
 
-use crate::db::db_file::RdbFile;
+use crate::parser::db_file::RdbFile;
 
 const CHARSET: &[u8] = b"abcdefghijklmnopqrstuvwxyz0123456789";
 static DB: OnceCell<DataStore> = OnceCell::new();
