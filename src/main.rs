@@ -122,7 +122,7 @@ fn recieve_message(mut stream: TcpStream) {
 fn read_simple_string_response(stream: &mut TcpStream) -> String {
     let message = read_message(stream).unwrap();
     let message_input =
-        str::from_utf8(&message).expect("Unable to parse input bytestream to str utf8");
+        str::from_utf8(&message).expect(format!("Unable to parse input bytestream to str utf8 -> {:?}", message).as_str());
     let parsed_message = RedisMessageType::decode(message_input)
         .expect("unable to parse RedisMessageType from input byte stream")
         .0;
