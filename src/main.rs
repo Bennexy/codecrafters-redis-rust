@@ -212,6 +212,9 @@ fn repl_handshake(mut stream: TcpStream) {
     debug!("Handshake 3/3 Sending PSYNC to master");
     {
         let command = RedisMessageType::bulk_string_array(vec!["PSYNC", "?", "-1"].into());
+        stream
+        .write_all(command.encode().as_bytes())
+        .expect("Failed to write to stream. Should never happen!");
 
         let val = read_simple_string_response(&mut stream);
         if !val.starts_with("FULLRESYNC") {

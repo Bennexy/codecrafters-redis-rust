@@ -30,10 +30,6 @@ impl ArgErrorMessageGenerator<PsyncCommand> for PsyncCommand {}
 
 impl Parse for PsyncCommand {
     fn parse(mut args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
-        if !args.is_empty() {
-            return Err(Self::arg_count_error());
-        }
-
         let replication_id = args
             .pop_front()
             .ok_or(Self::arg_count_error())?
@@ -44,7 +40,6 @@ impl Parse for PsyncCommand {
             .bulk_string_value()?
             .parse::<u128>()
             .unwrap_or(0);
-
         return Ok(PsyncCommand::new(replication_id, offset));
     }
 }

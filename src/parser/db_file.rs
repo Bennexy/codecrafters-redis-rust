@@ -482,7 +482,7 @@ mod test {
     #[cfg(test)]
     mod test_rdb_file {
 
-        use crate::db::db_file::RdbFile;
+        use crate::parser::db_file::RdbFile;
 
         #[test]
         fn test_load_full_rdb_file() {
@@ -517,7 +517,7 @@ mod test {
 
     #[cfg(test)]
     mod test_parse_length {
-        use crate::db::db_file::{parse_length_encoding, LengthEncoding};
+        use crate::parser::db_file::{parse_length_encoding, LengthEncoding};
 
         #[test]
         fn test_parse_length_encoding_0b00() {
@@ -581,7 +581,7 @@ mod test {
 
     #[cfg(test)]
     mod test_header {
-        use crate::db::db_file::Header;
+        use crate::parser::db_file::Header;
 
         #[test]
         fn test_decode_header() {
@@ -599,7 +599,7 @@ mod test {
 
         use std::collections::HashMap;
 
-        use crate::db::db_file::MetadataSubSection;
+        use crate::parser::db_file::MetadataSubSection;
 
         // #[test]
         fn test_metadata_decode() {
@@ -641,7 +641,7 @@ mod test {
 
     #[cfg(test)]
     mod test_database {
-        use crate::db::db_file::Database;
+        use crate::parser::db_file::Database;
 
         #[test]
         fn test_parse_database_no_key_value_data_but_two_subsections() {
@@ -668,7 +668,7 @@ mod test {
     mod test_data_subsection {
         use std::time::{Duration, UNIX_EPOCH};
 
-        use crate::db::db_file::DatabaseSubSection;
+        use crate::parser::db_file::DatabaseSubSection;
 
         #[test]
         fn db_sub_section_parsing_full_sub_section() {
@@ -739,7 +739,7 @@ mod test {
 
     #[cfg(test)]
     mod test_data_subsection_header {
-        use crate::db::db_file::DatabaseSubSectionHeader;
+        use crate::parser::db_file::DatabaseSubSectionHeader;
 
         #[test]
         fn db_header_parsing_header_1() {
@@ -770,7 +770,7 @@ mod test {
     mod test_key_value_data_unit {
         use std::time::{Duration, UNIX_EPOCH};
 
-        use crate::db::db_file::KeyValueDataUnit;
+        use crate::parser::db_file::KeyValueDataUnit;
 
         #[test]
         fn test_decode_no_expiry() {

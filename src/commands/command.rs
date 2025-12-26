@@ -1,6 +1,7 @@
 use std::collections::VecDeque;
 
 use anyhow::Result;
+use log::trace;
 
 use crate::{
     commands::{
@@ -63,6 +64,7 @@ impl UnparsedCommandType {
                 )))
             }
         };
+        trace!("Parsed command {}", command.name().to_ascii_uppercase());
 
         return Ok(command);
     }
