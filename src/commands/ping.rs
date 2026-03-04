@@ -18,6 +18,7 @@ impl CommandName for PingCommand {
         return "ping";
     }
 }
+
 impl ArgErrorMessageGenerator<PingCommand> for PingCommand {}
 
 impl Parse for PingCommand {

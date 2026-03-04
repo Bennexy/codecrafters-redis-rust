@@ -3,9 +3,7 @@
 use core::str;
 use log::{debug, error, info, trace};
 use std::{
-    io::{self, ErrorKind, Read, Write},
-    net::{SocketAddr, TcpListener, TcpStream},
-    result::Result,
+    collections::VecDeque, io::{self, ErrorKind, Read, Write}, net::{SocketAddr, TcpListener, TcpStream}, result::Result
 };
 use utils::{cli::Args, thread_pool::ThreadPool};
 
@@ -61,16 +59,16 @@ fn main() {
 }
 
 /// Reads the data provided in a single TCP message.
-fn read_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
+fn read_message(stream: &mut TcpStream) -> Result<VecDeque<u8>, io::Error> {
     const BUFFER_SIZE: usize = 1024;
-    let mut data = Vec::with_capacity(BUFFER_SIZE * 4); // pre-allocate
+    let mut data = VecDeque::with_capacity(BUFFER_SIZE * 4); // pre-allocate
     let mut buf = [0u8; BUFFER_SIZE];
 
     loop {
         let n = stream.read(&mut buf)?;
         trace!("Bytes received: {}", n);
 
-        data.extend_from_slice(&buf[..n]);
+        data.extend(&buf[..n]);
 
         if n < BUFFER_SIZE {
             break; // no more data immediately available or EOF
@@ -83,11 +81,11 @@ fn read_message(stream: &mut TcpStream) -> Result<Vec<u8>, io::Error> {
 fn recieve_message(mut stream: TcpStream) {
     let peer = stream.peer_addr().unwrap();
     'connection: loop {
-        let raw_message = match read_message(&mut stream) {
-            Ok(raw_message) => {
+        let mut raw_message = match read_message(&mut stream) {
+            Ok(mut raw_message) => {
                 trace!(
                     "Successfully read tcp message. {:?}",
-                    generate_hex_log(&raw_message)
+                    generate_hex_log(raw_message.make_contiguous())
                 );
                 if raw_message.is_empty() {
                     info!("No bytes recieved. Closing connection");
@@ -104,36 +102,32 @@ fn recieve_message(mut stream: TcpStream) {
             }
         };
 
-        let message_input =
-            str::from_utf8(&raw_message).expect("Unable to parse input bytestream to str utf8");
-        debug!("Message recieved: {:?}", generate_hex_log(&raw_message));
+        debug!("Message recieved: {:?}", generate_hex_log(&raw_message.make_contiguous()));
 
-        let response = match process_message(message_input) {
+        let response = match process_message(raw_message) {
             Ok(message) => message,
             Err(message) => message,
         };
 
         stream
-            .write_all(response.encode().as_bytes())
+            .write_all(response.encode().make_contiguous())
             .expect("Failed to write to stream. Should never happen!");
     }
 }
 
 fn read_simple_string_response(stream: &mut TcpStream) -> String {
     let message = read_message(stream).unwrap();
-    let message_input =
-        str::from_utf8(&message).expect(format!("Unable to parse input bytestream to str utf8 -> {:?}", message).as_str());
-    let parsed_message = RedisMessageType::decode(message_input)
+    let parsed_message = RedisMessageType::decode(message)
         .expect("unable to parse RedisMessageType from input byte stream")
         .0;
 
     return match parsed_message {
-        RedisMessageType::SimpleString(val) => val,
+        RedisMessageType::SimpleString(mut val) => String::from_utf8_lossy(val.make_contiguous()).to_string(),
         _ => panic!("Expected a \"PONG\" response from the master server"),
     };
 }
 
-fn process_message(message: &str) -> Result<RedisMessageType, RedisMessageType> {
+fn process_message(message: VecDeque<u8>) -> Result<RedisMessageType, RedisMessageType> {
     let parsed_message = RedisMessageType::decode(message)
         .expect("unable to parse RedisMessageType from input byte stream")
         .0;
@@ -162,7 +156,7 @@ fn repl_handshake(mut stream: TcpStream) {
     {
         let ping = RedisMessageType::bulk_string_array(vec!["PING"]);
         stream
-            .write_all(ping.encode().as_bytes())
+            .write_all(ping.encode().make_contiguous())
             .expect("Failed to write to stream. Should never happen!");
 
         let val = read_simple_string_response(&mut stream);
@@ -184,7 +178,7 @@ fn repl_handshake(mut stream: TcpStream) {
             ]);
 
             stream
-                .write_all(replconf.encode().as_bytes())
+                .write_all(replconf.encode().make_contiguous())
                 .expect("Failed to write to stream. Should never happen!");
 
             let val = read_simple_string_response(&mut stream);
@@ -198,7 +192,7 @@ fn repl_handshake(mut stream: TcpStream) {
             let replconf = RedisMessageType::bulk_string_array(vec!["REPLCONF", "capa", "psync2"]);
 
             stream
-                .write_all(replconf.encode().as_bytes())
+                .write_all(replconf.encode().make_contiguous())
                 .expect("Failed to write to stream. Should never happen!");
 
             let val = read_simple_string_response(&mut stream);
@@ -213,7 +207,7 @@ fn repl_handshake(mut stream: TcpStream) {
     {
         let command = RedisMessageType::bulk_string_array(vec!["PSYNC", "?", "-1"].into());
         stream
-        .write_all(command.encode().as_bytes())
+        .write_all(command.encode().make_contiguous())
         .expect("Failed to write to stream. Should never happen!");
 
         let val = read_simple_string_response(&mut stream);

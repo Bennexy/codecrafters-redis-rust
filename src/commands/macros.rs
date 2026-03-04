@@ -30,6 +30,20 @@ macro_rules! redis_commands {
                     )+
                 }
             }
+
+            #[inline(always)]
+            pub fn from_bytes(cmd_bytes: &[u8], args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
+                match cmd_bytes.len() {
+                    $(
+                        l if l == stringify!($name).len() && cmd_bytes.eq_ignore_ascii_case(stringify!($name).as_bytes()) =>
+                            Ok(UnparsedCommandType::$name(Command::<Unparsed, $cmd>::new(args))),
+                    )+
+                    _ => Err(RedisMessageType::error(format!(
+                        "Unknown command: '{}'",
+                        String::from_utf8_lossy(cmd_bytes)
+                    ))),
+                }
+            }
         }
 
         impl ParsedCommandType {

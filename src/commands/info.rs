@@ -34,7 +34,7 @@ impl Execute for InfoCommand {
     fn execute(self) -> Result<RedisMessageType, RedisMessageType> {
         let repl_data = get_db().get_config().replication_data;
 
-        return Ok(RedisMessageType::BulkString(format!(
+        return Ok(RedisMessageType::bulk_string(format!(
             "role:{}{LF}master_replid:{}{LF}master_repl_offset:{}{LF}",
             repl_data.role.name(),
             repl_data.master_repl_id,

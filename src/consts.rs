@@ -9,6 +9,7 @@ use once_cell::sync::Lazy;
 pub const CR: u8 = b'\r';
 pub const LF: u8 = b'\n';
 pub const CRLF: &str = "\r\n";
+pub const CRLF1: [u8; 2] = [b'\r', b'\n'];
 
 pub static GLOBAL_MAP: Lazy<Arc<RwLock<HashMap<String, String>>>> =
     Lazy::new(|| Arc::new(RwLock::new(HashMap::new())));

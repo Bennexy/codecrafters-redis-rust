@@ -34,7 +34,7 @@ redis_commands! {
 
 impl UnparsedCommandType {
     pub fn new(mut args: VecDeque<RedisMessageType>) -> Result<Self, RedisMessageType> {
-        let command_arg = match args
+        let mut command_arg = match args
             .pop_front()
             .ok_or(RedisMessageType::error("No argument passed to redis!"))?
         {
@@ -46,24 +46,9 @@ impl UnparsedCommandType {
             }
         };
 
-        let command = match command_arg.to_uppercase().as_str() {
-            "PING" => Self::Ping(Command::<Unparsed, PingCommand>::new(args)),
-            "GET" => Self::Get(Command::<Unparsed, GetCommand>::new(args)),
-            "SET" => Self::Set(Command::<Unparsed, SetCommand>::new(args)),
-            "ECHO" => Self::Echo(Command::<Unparsed, EchoCommand>::new(args)),
-            "CONFIG" => Self::Config(Command::<Unparsed, ConfigCommand>::new(args)),
-            "KEYS" => Self::Keys(Command::<Unparsed, KeysCommand>::new(args)),
-            "INFO" => Self::Info(Command::<Unparsed, InfoCommand>::new(args)),
-            "REPLCONF" => Self::ReplConf(Command::<Unparsed, ReplConfCommand>::new(args)),
-            "PSYNC" => Self::Psync(Command::<Unparsed, PsyncCommand>::new(args)),
-            // "SAVE" => Self::SAVE(SaveCommand::new(args)),
-            _other => {
-                return Err(RedisMessageType::error(format!(
-                    "Unknown command name: '{}'",
-                    _other
-                )))
-            }
-        };
+        let cmd = command_arg.make_contiguous();
+
+        let command = Self::from_bytes(cmd, args)?;
         trace!("Parsed command {}", command.name().to_ascii_uppercase());
 
         return Ok(command);
